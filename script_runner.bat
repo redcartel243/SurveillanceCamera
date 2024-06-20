@@ -1,0 +1,1 @@
+"C:\Users\appli\AppData\Local\Programs\Python\Python39\python.exe" "C:\Users\appli\PycharmProjects\IntruderFaceDetection\FaceIntruder.pyw"

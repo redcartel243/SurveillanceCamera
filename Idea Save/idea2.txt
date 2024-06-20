@@ -1,0 +1,57 @@
+import os
+
+import cv2
+from threading import Thread
+import Data
+
+def check_path(path):            #function to confirm whether the given path exists or not
+    dir = os.path.dirname(path)  #if it doesn't exist this function will create
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+class Users:
+    def __init__(self):
+        Thread.__init__(self)
+    def AddFace(self,name):
+        self.vid_cam = cv2.VideoCapture(0)  # Start video capturing
+
+        self.face_cascade = cv2.CascadeClassifier(
+            'haarcascade_frontalface_default.xml')  # Detect object in video stream using Haarcascade Frontal Face
+
+        self.face_id = 1  # For each person,there will be one face id
+        self.count = 0  # Initialize sample face image
+
+        check_path("DataSet/")
+
+        while (True):
+            _, self.image_frame = self.vid_cam.read()  # Capture video frame _, is used to ignored first value because vid_cam.read() is returning 2 values
+
+            self.gray = cv2.cvtColor(self.image_frame, cv2.COLOR_BGR2GRAY)  # Convert frame to grayscale
+
+            self.faces = self.face_cascade.detectMultiScale(self.gray, 1.4, 5)  # Detect faces using Cascade Classifier(xml file)
+
+            for (x, y, w, h) in self.faces:  # the coordinates on the face
+                cv2.rectangle(self.image_frame, (x, y), (x + w, y + h), (255, 0, 0),
+                              2)  # Crop the image frame into rectangle
+
+                self.count += 1  # Increment face image
+
+                cv2.imwrite("DataSet/" + str(name) + "." + str(self.face_id) + '.' + str(self.count) + ".jpg",
+                            self.gray[y:y + h, x:x + w])  # Save the captured image into the datasets folder
+
+                cv2.imshow('Creating Dataset!!!',
+                           self.image_frame)  # Display the video frame, with rectangular box on the person's face
+
+            if cv2.waitKey(100) & 0xFF == 27:  # To stop taking video, press 'Esc'
+                break
+
+            elif self.count > 10:  # If image taken reach 1000, stop taking video
+                break
+
+        self.vid_cam.release()  # Stop video
+
+        cv2.destroyAllWindows()  # Close all windows
+    # AddUser("David")
+    def run(self):
+        while True:
+            self.Face=Users()
+            self.Face.AddFace(Data.name)
