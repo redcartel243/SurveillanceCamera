@@ -1,0 +1,10 @@
+email:
+  sender: "bukedidavid@gmail.com"
+  password: "+243814863297"
+  receiver: "applitwebsite1@outlook.com"
+alarm:
+  sound: 2
+  repetitions: 3
+  text: "Intruder detected"
+voice:
+  type: "male"
