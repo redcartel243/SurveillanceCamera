@@ -6,14 +6,14 @@ datasave = {"ON": False, "OFF": False, "ID": 0, "user1": "", "user2": "", "promp
 
 
 def load():  # this method is used to load the data from the txt file
-    json_file = open(r"/datasave.txt")
+    json_file = open(r"datasave.txt")
     name = json.load(json_file)
     json_file.close()
     return name
 
 
 def save(data):  # this method is used to save the data in the text file
-    file = open(r'/datasave.txt', 'w')
+    file = open(r'datasave.txt', 'w')
     json.dump(data, file)
     file.close()
 

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1172</width>
-    <height>749</height>
+    <width>646</width>
+    <height>245</height>
    </rect>
   </property>
   <property name="maximumSize">
@@ -468,7 +468,7 @@
    <widget class="QLabel" name="label">
     <property name="geometry">
      <rect>
-      <x>30</x>
+      <x>20</x>
       <y>20</y>
       <width>261</width>
       <height>71</height>
@@ -784,7 +784,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1172</width>
+     <width>646</width>
      <height>22</height>
     </rect>
    </property>

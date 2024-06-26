@@ -61,7 +61,7 @@ def detect_motion():
 
     for i in range(0, len(time), 2):
         df = df.append({"Start": time[i], "End": time[i + 1]}, ignore_index=True)
-    df.to_csv("datasets/Time_of_movements.csv")
+    df.to_csv("C:/Users/Red/PycharmProjects/SurveillanceCamera/datasets/Time_of_movements.csv")
 
     video.release()
     cv2.destroyAllWindows()
