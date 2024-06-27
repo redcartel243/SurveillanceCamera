@@ -40,7 +40,7 @@ def get_device_info(device_id):
     cap.release()
     return info
 
-def main():
+"""def main():
     devices = list_capture_devices()
     if not devices:
         logging.info("No capture devices found.")
@@ -55,6 +55,5 @@ def main():
                 logging.info(f"  {key}: {value}")
         else:
             logging.warning(f"Failed to retrieve info for device {device_id}")
-
 if __name__ == "__main__":
-    main()
+    main()"""
