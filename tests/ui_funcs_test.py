@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import *
 from Settings import Ui_MainWindow
 import beepy
 from old.camsystem import face, motion
-from src import db_func, Data
+from src import user_db_func, Data
 
 
 class SettingsForm(Ui_MainWindow, QMainWindow):
