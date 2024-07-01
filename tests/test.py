@@ -74,7 +74,7 @@ class MainWindow(QMainWindow):
         super(MainWindow, self).__init__()
 
         # rtsp://<Username>:<Password>@<IP Address>:<Port>/cam/realmonitor?channel=1&subtype=0
-        self.url_1 = "http://192.168.0.100:8080/video"
+        self.url_1 = "0"
         self.url_2 = "http://192.168.0.100:8080/video"
         self.url_3 = "http://192.168.0.100:8080/video"
 

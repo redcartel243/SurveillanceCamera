@@ -3,7 +3,7 @@ import sys
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QEvent, Qt
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QMessageBox, QLabel, QDialog, QSizePolicy, QScrollArea
 from PyQt5.QtGui import QPixmap, QImage, QPalette
-from PyQt5.QtMultimedia import QCamera, QCameraInfo
+from PyQt5.QtMultimedia import QCamera, QCameraInfo, QMediaPlayer, QMediaContent
 from PyQt5.QtMultimediaWidgets import QVideoWidget
 from CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
@@ -30,8 +30,13 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
         super().setupUi(MainWindow)
         MainWindow.setWindowTitle(self.title)
         self.context_button_1.clicked.connect(self.show_context_menu)
+        self.context_button_2.clicked.connect(self.show_context_menu)
+        self.context_button_3.clicked.connect(self.show_context_menu)
+        self.context_button_4.clicked.connect(self.show_context_menu)
         self.view_camera_1.clicked.connect(lambda: self.view_camera(self.view_camera_1_id))
         self.view_camera_2.clicked.connect(lambda: self.view_camera(self.view_camera_2_id))
+        self.view_camera_3.clicked.connect(lambda: self.view_camera(self.view_camera_2_id))
+        self.view_camera_4.clicked.connect(lambda: self.view_camera(self.view_camera_2_id))
 
         # Initialize QLabel for displaying video
         self.video_label = QLabel(self.scrollAreaWidgetContents)
@@ -55,15 +60,19 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
 
             if camera_id is not None:
                 if isinstance(camera_id, str):
+                    self.video_widget.setVisible(False)
+                    self.video_label.setVisible(True)
                     print(f"Trying to connect to IP camera at {camera_id}")
                     self.ip_camera_thread = CaptureIpCameraFramesWorker(camera_id)
                     self.ip_camera_thread.ImageUpdated.connect(self.update_image)
                     self.ip_camera_thread.start()
                     print(f"Connected to IP camera at {camera_id}")
                 else:
+                    self.video_label.setVisible(False)
+                    self.video_widget.setVisible(True)
                     camera_info = QCameraInfo.availableCameras()[camera_id]
                     self.camera = QCamera(camera_info)
-                    self.camera.setViewfinder(self.video_label)
+                    self.camera.setViewfinder(self.video_widget)
                     self.camera.start()
 
             self.selected_camera_id = camera_id
