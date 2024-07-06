@@ -1,8 +1,6 @@
 import os
-
 import beepy
 import cv2
-import numpy
 import numpy as np
 import face_recognition
 from threading import Thread
@@ -10,13 +8,16 @@ from dataloader import load_config
 from emailer import send_email
 from tts import speak
 import logging
-from src import Data
+from PyQt5.QtCore import pyqtSignal, QObject, QThread
+import Data
 
 config = load_config()
 
 logging.basicConfig(level=logging.INFO)
 
-class FaceRecognition(Thread):
+class FaceRecognitionWorker(QObject):
+    ImageUpdated = pyqtSignal(np.ndarray)
+
     def __init__(self, known_faces_dir='C:/Users/Red/PycharmProjects/SurveillanceCamera/datasets/known_faces', captures_dir='C:/Users/Red/PycharmProjects/SurveillanceCamera/datasets/Captures'):
         super().__init__()
         self.known_faces_dir = known_faces_dir
@@ -32,55 +33,31 @@ class FaceRecognition(Thread):
             filepath = os.path.join(self.known_faces_dir, filename)
             image = face_recognition.load_image_file(filepath)
             encodings = face_recognition.face_encodings(image)[0]
-            print(encodings)
             if encodings.any():
                 known_face_encodings.append(encodings)
                 known_face_names.append(os.path.splitext(filename)[0])
 
         return known_face_encodings, known_face_names
 
-    def run(self):
+    def recognize_faces(self, frame):
         known_face_encodings, known_face_names = self.load_known_faces()
-        video_capture = cv2.VideoCapture(0)
-        process_this_frame = True
+        rgb_frame = np.ascontiguousarray(frame[:, :, ::-1])
+        face_locations = face_recognition.face_locations(rgb_frame)
+        face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
 
-        while True:
-            ret, frame = video_capture.read()
-            if not ret:
-                logging.error("Failed to capture image from camera.")
-                break
+        face_names = []
+        for face_encoding in face_encodings:
+            matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+            name = "Unknown"
+            face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+            best_match_index = np.argmin(face_distances)
+            if matches[best_match_index]:
+                name = known_face_names[best_match_index]
+            face_names.append(name)
+            self.handle_detection(name, frame)
 
-            small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
-            rgb_small_frame = numpy.ascontiguousarray(small_frame[:, :, ::-1])
-
-            face_locations = []
-            face_names = []
-
-            if process_this_frame:
-                face_locations = face_recognition.face_locations(rgb_small_frame)
-                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)
-
-                for face_encoding in face_encodings:
-                    matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
-                    name = "Unknown"
-                    face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
-                    best_match_index = np.argmin(face_distances)
-                    if matches[best_match_index]:
-                        name = known_face_names[best_match_index]
-
-                    face_names.append(name)
-                    self.handle_detection(name, frame)
-
-            process_this_frame = not process_this_frame
-
-            self.draw_faces(frame, face_locations, face_names)
-            cv2.imshow('Video', frame)
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-
-        video_capture.release()
-        cv2.destroyAllWindows()
+        self.draw_faces(frame, face_locations, face_names)
+        self.ImageUpdated.emit(frame)
 
     def handle_detection(self, name, frame):
         datasave = Data.load()
@@ -120,12 +97,50 @@ class FaceRecognition(Thread):
             font = cv2.FONT_HERSHEY_DUPLEX
             cv2.putText(frame, name, (left + 6, bottom - 6), font, 1.0, (255, 255, 255), 1)
 
-class FaceRecognitionService:
-    def __init__(self):
-        self.face_recognition_thread = FaceRecognition()
+class FaceRecognitionService(QThread):
+    ImageUpdated = pyqtSignal(np.ndarray)
 
-    def start(self):
-        self.face_recognition_thread.start()
+    def __init__(self, camera_id):
+        super().__init__()
+        self.face_recognition_worker = FaceRecognitionWorker()
+        self.camera_id = camera_id
+        self.running = False
+
+    def run(self):
+        try:
+            logging.info("Starting face recognition service.")
+            known_face_encodings, known_face_names = self.face_recognition_worker.load_known_faces()
+            video_capture = cv2.VideoCapture(self.camera_id)
+            self.running = True
+
+            while self.running:
+                ret, frame = video_capture.read()
+                if not ret:
+                    logging.error("Failed to capture image from camera.")
+                    break
+
+                rgb_frame = np.ascontiguousarray(frame[:, :, ::-1])
+                face_locations = face_recognition.face_locations(rgb_frame)
+                face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
+
+                face_names = []
+                for face_encoding in face_encodings:
+                    matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+                    name = "Unknown"
+                    face_distances = face_recognition.face_distance(known_face_encodings, face_encoding)
+                    best_match_index = np.argmin(face_distances)
+                    if matches[best_match_index]:
+                        name = known_face_names[best_match_index]
+                    face_names.append(name)
+                    self.face_recognition_worker.handle_detection(name, frame)
+
+                self.face_recognition_worker.draw_faces(frame, face_locations, face_names)
+                self.ImageUpdated.emit(frame)
+
+            video_capture.release()
+            logging.info("Stopped face recognition service.")
+        except Exception as e:
+            logging.error(f"Exception in face recognition service: {e}")
 
     def stop(self):
-        self.face_recognition_thread.join()
+        self.running = False
