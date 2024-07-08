@@ -4,13 +4,13 @@ import numpy as np
 import logging
 import sys
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, Qt
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QMessageBox, QLabel, QDialog, QSizePolicy, QScrollArea, QVBoxLayout, QGridLayout, QWidget, QPushButton
-from PyQt5.QtGui import QPixmap, QImage, QPalette
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QMessageBox, QLabel, QDialog, QSizePolicy, QScrollArea, QVBoxLayout, QGridLayout, QWidget, QPushButton, QStackedWidget
+from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtMultimedia import QCamera, QCameraInfo
-from CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
+from src.CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
-from ip_address_dialog import IPAddressDialog
-from face_recognition_service import FaceRecognitionService
+from src.ip_address_dialog import IPAddressDialog
+from src.face_recognition_service import FaceRecognitionService
 
 logging.basicConfig(level=logging.INFO)
 
@@ -49,7 +49,7 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
         self.view_camera_3.clicked.connect(lambda: self.view_camera(self.view_camera_3_id))
         self.view_camera_4.clicked.connect(lambda: self.view_camera(self.view_camera_4_id))
         self.vision_button.clicked.connect(self.toggle_face_recognition)
-        self.expand_Button.clicked.connect(self.toggle_expand_video)
+        self.expand_button.clicked.connect(self.toggle_expand_video)
 
         # Initialize QLabel for displaying video
         self.video_label = QLabel(self.scrollAreaWidgetContents)
@@ -57,11 +57,16 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
         self.video_label.setScaledContents(True)
         self.video_label.setObjectName("video_label")
 
-        # Create a widget to hold the video and button
-        self.video_widget_container = QWidget(self.scrollAreaWidgetContents)
-        self.video_widget_container.setLayout(QGridLayout())
-        self.video_widget_container.layout().addWidget(self.video_label, 0, 0)
-        self.video_widget_container.layout().addWidget(self.expand_Button, 0, 0, Qt.AlignBottom | Qt.AlignRight)
+        # Initialize the expand button
+        self.expand_button = QPushButton()
+        self.expand_button.setText("Expand")
+        self.expand_button.setMaximumSize(70, 50)
+        self.expand_button.clicked.connect(self.toggle_expand_video)
+
+        # Create a stacked widget to hold the video and button
+        self.video_widget_container = QStackedWidget(self.scrollAreaWidgetContents)
+        self.video_widget_container.addWidget(self.video_label)
+        self.video_widget_container.addWidget(self.expand_button)
 
         self.gridLayout_2.addWidget(self.video_widget_container, 0, 0, 1, 1)
 
@@ -76,14 +81,16 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
 
     def toggle_expand_video(self):
         if not self.is_expanded:
-            self.saved_geometry = self.video_label.geometry()  # Save the current geometry
-            self.video_label.setParent(None)
-            self.video_label.setWindowFlags(Qt.Window)
-            self.video_label.showFullScreen()
+            self.saved_geometry = self.video_widget_container.geometry()  # Save the current geometry
+            self.video_widget_container.setParent(None)
+            self.video_widget_container.setWindowFlags(Qt.Window)
+            self.video_widget_container.showFullScreen()
+            self.expand_button.setText("Shrink")
         else:
-            self.video_label.setWindowFlags(Qt.Widget)
-            self.scrollAreaWidgetContents.layout().addWidget(self.video_label)
-            self.video_label.setGeometry(self.saved_geometry)
+            self.video_widget_container.setWindowFlags(Qt.Widget)
+            self.scrollAreaWidgetContents.layout().addWidget(self.video_widget_container)
+            self.video_widget_container.setGeometry(self.saved_geometry)
+            self.expand_button.setText("Expand")
         self.is_expanded = not self.is_expanded
 
     def turn_on_face_recognition(self, camera_id):
