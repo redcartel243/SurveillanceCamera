@@ -1,17 +1,16 @@
 import cv2
-
 from src.device import list_capture_devices, get_device_info
 import sys
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QEvent, Qt
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QMessageBox, QLabel, QDialog, QSizePolicy, QScrollArea
 from PyQt5.QtGui import QPixmap, QImage, QPalette
-from PyQt5.QtMultimedia import QCamera, QCameraInfo, QMediaPlayer, QMediaContent
-from PyQt5.QtMultimediaWidgets import QVideoWidget
+from PyQt5.QtMultimedia import QCamera, QCameraInfo
 from CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
 from ip_address_dialog import IPAddressDialog
 from face_recognition_service import FaceRecognitionService
 import logging
+import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 
@@ -99,25 +98,28 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
                 self.face_recognition_thread = None
 
             if camera_id is not None:
+                self.video_label.setVisible(True)
                 if isinstance(camera_id, str):
-                    self.video_widget.setVisible(False)
-                    self.video_label.setVisible(True)
                     print(f"Trying to connect to IP camera at {camera_id}")
                     self.ip_camera_thread = CaptureIpCameraFramesWorker(camera_id)
                     self.ip_camera_thread.ImageUpdated.connect(self.update_image)
                     self.ip_camera_thread.start()
                     print(f"Connected to IP camera at {camera_id}")
                 else:
-                    self.video_label.setVisible(False)
-                    self.video_widget.setVisible(True)
-                    camera_info = QCameraInfo.availableCameras()[camera_id]
-                    self.camera = QCamera(camera_info)
-                    self.camera.setViewfinder(self.video_widget)
-                    self.camera.start()
+                    self.cap = cv2.VideoCapture(camera_id)
+                    self.timer = QTimer()
+                    self.timer.timeout.connect(self.display_frame)
+                    self.timer.start(30)
 
             self.selected_camera_id = camera_id
         except Exception as e:
             logging.error(f"Exception in turn_on_camera: {e}")
+
+    def display_frame(self):
+        ret, frame = self.cap.read()
+        if ret:
+            image = self.convert_frame_to_qimage(frame)
+            self.update_image(image)
 
     def update_image(self, image: QImage):
         self.video_label.setPixmap(QPixmap.fromImage(image))
@@ -131,6 +133,26 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
             self.video_label.setPixmap(QPixmap.fromImage(image))
         except Exception as e:
             logging.error(f"Exception in update_face_recognition_image: {e}")
+
+    def capture_image_from_label(self):
+        pixmap = self.video_label.pixmap()
+        if pixmap:
+            image = pixmap.toImage()
+            frame = self.convert_qimage_to_frame(image)
+            self.face_recognition_thread.face_recognition_worker.recognize_faces(frame)
+
+    @staticmethod
+    def convert_frame_to_qimage(frame):
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return QImage(rgb_frame.data, rgb_frame.shape[1], rgb_frame.shape[0], rgb_frame.strides[0], QImage.Format_RGB888)
+
+    @staticmethod
+    def convert_qimage_to_frame(image):
+        image = image.convertToFormat(QImage.Format_RGB888)
+        width, height = image.width(), image.height()
+        ptr = image.bits()
+        ptr.setsize(image.byteCount())
+        return np.array(ptr).reshape(height, width, 3)
 
     def show_context_menu(self):
         self.context_button = self.sender()
@@ -197,6 +219,7 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
             self.show_camera_properties()
         elif action_name == 'Turn Off':
             self.turn_on_camera(None)
+            self.use_face_recognition = not self.use_face_recognition
             self.show_message("Camera turned off")
         else:
             self.show_message(f"{action_name} was clicked")
