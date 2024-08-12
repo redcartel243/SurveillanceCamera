@@ -83,6 +83,7 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
         else:
             self.video_label.setWindowFlags(Qt.Widget)
             self.scrollAreaWidgetContents.layout().addWidget(self.video_label)
+            self.scrollAreaWidgetContents.layout().addWidget(self.expand_Button)
             self.video_label.setGeometry(self.saved_geometry)
         self.is_expanded = not self.is_expanded
 
