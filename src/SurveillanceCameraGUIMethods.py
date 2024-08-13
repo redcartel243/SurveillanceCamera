@@ -76,25 +76,42 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
 
     def toggle_expand_video(self):
         if not self.is_expanded:
-            self.saved_geometry = self.video_label.geometry()  # Save the current geometry
-            self.video_label.setParent(None)
-            self.video_label.setWindowFlags(Qt.Window)
-            self.video_label.showFullScreen()
-        else:
-            self.video_label.setWindowFlags(Qt.Widget)
-            self.scrollAreaWidgetContents.layout().addWidget(self.video_label)
-            self.scrollAreaWidgetContents.layout().addWidget(self.expand_Button)
-            self.video_label.setGeometry(self.saved_geometry)
-        self.is_expanded = not self.is_expanded
+            # Save the current geometry before expanding
+            self.saved_geometry = self.video_widget_container.geometry()
 
-    def turn_on_face_recognition(self, camera_id):
-        try:
-            self.stop_all_threads()
-            self.face_recognition_thread = FaceRecognitionService(camera_id)
-            self.face_recognition_thread.ImageUpdated.connect(self.update_face_recognition_image)
-            self.face_recognition_thread.start()
-        except Exception as e:
-            logging.error(f"Exception in turn_on_face_recognition: {e}")
+            # Set the video label and button as a new window
+            self.video_label.setParent(None)
+            self.expand_Button.setParent(None)
+
+            # Create a new layout for the full-screen view
+            self.fullscreen_layout = QGridLayout()
+            self.fullscreen_container = QWidget()
+            self.fullscreen_container.setLayout(self.fullscreen_layout)
+
+            # Add video label and button to the full-screen layout
+            self.fullscreen_layout.addWidget(self.video_label, 0, 0)
+            self.fullscreen_layout.addWidget(self.expand_Button, 0, 0)
+            self.fullscreen_layout.setAlignment(self.expand_Button, Qt.AlignBottom | Qt.AlignRight)
+
+            self.fullscreen_container.showFullScreen()
+            self.is_expanded = True
+        else:
+            # Restore the original state
+            self.video_label.setParent(self.video_widget_container)
+            self.expand_Button.setParent(self.video_widget_container)
+
+            # Restore the geometry of the original container
+            self.video_widget_container.setGeometry(self.saved_geometry)
+
+            # Hide the full-screen container
+            self.fullscreen_container.hide()
+
+            # Re-add video label and expand button back to the layout
+            self.video_widget_container.layout().addWidget(self.video_label)
+            self.video_widget_container.layout().addWidget(self.expand_Button)
+            self.video_widget_container.layout().setAlignment(self.expand_Button, Qt.AlignBottom | Qt.AlignRight)
+
+            self.is_expanded = False
 
     def turn_on_camera(self, camera_id):
         try:
