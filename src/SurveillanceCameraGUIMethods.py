@@ -4,17 +4,22 @@ import numpy as np
 import logging
 import sys
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, Qt
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QMessageBox, QLabel, QDialog, QSizePolicy, QScrollArea, QVBoxLayout, QGridLayout, QWidget, QPushButton
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QMessageBox, QLabel, QDialog, QSizePolicy, \
+    QScrollArea, QVBoxLayout, QGridLayout, QWidget, QPushButton, QInputDialog
 from PyQt5.QtGui import QPixmap, QImage, QPalette
 from PyQt5.QtMultimedia import QCamera, QCameraInfo
 from CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
 from ip_address_dialog import IPAddressDialog
 from face_recognition_service import FaceRecognitionService
+import sqlite3
+from db_func import get_rooms, get_cameras, add_room, assign_camera_to_room, delete_room, delete_assignment, \
+    modify_assignment, get_available_cameras, get_all_rooms_with_cameras
 
 logging.basicConfig(level=logging.INFO)
 
-class MethodMapping(Ui_MainWindow, QMainWindow):
+
+class MethodMapping(QMainWindow, Ui_MainWindow):
     def __init__(self, title=""):
         QMainWindow.__init__(self)
         self.title = title
@@ -36,6 +41,7 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
 
         self.use_face_recognition = False
         self.is_expanded = False  # Track the expanded state
+        self.user_id = 1  # Example user ID, should be set based on the logged-in user
 
     def setupUi(self, MainWindow):
         super().setupUi(MainWindow)
@@ -50,6 +56,13 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
         self.view_camera_4.clicked.connect(lambda: self.view_camera(self.view_camera_4_id))
         self.vision_button.clicked.connect(self.toggle_face_recognition)
         self.expand_Button.clicked.connect(self.toggle_expand_video)
+        self.refresh_button.clicked.connect(self.refresh)
+
+        # Connect the edit_mapping button to open the mapping_tab
+        self.edit_mapping.clicked.connect(self.open_mapping_tab)
+
+        # Connect the add_room_button to add a room
+        self.add_room_button.clicked.connect(self.add_room)
 
         # Initialize QLabel for displaying video
         self.video_label = QLabel(self.scrollAreaWidgetContents)
@@ -65,6 +78,99 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
 
         self.gridLayout_2.addWidget(self.video_widget_container, 0, 0, 1, 1)
 
+        # Populate the combobox with rooms and cameras
+        self.populate_rooms_combobox()
+        self.rooms_list_combobox.currentIndexChanged.connect(self.show_combobox_context_menu)
+
+    def populate_rooms_combobox(self):
+        self.rooms_list_combobox.clear()  # Clear existing items
+
+        rooms = get_all_rooms_with_cameras()  # Fetch rooms and cameras from the database
+
+        for room_name, cameras in rooms.items():
+            camera_list = ', '.join(cameras)  # Join camera IDs into a comma-separated string
+            display_text = f"{room_name}: {camera_list}"
+            self.rooms_list_combobox.addItem(display_text)
+
+        # Refresh the list of available cameras (this can be used in the modify_assignment method)
+        self.available_cameras = get_available_cameras()
+
+    def show_combobox_context_menu(self, index):
+        if index < 0:
+            return  # No item selected
+
+        room_id = self.rooms_list_combobox.itemData(index)  # Retrieve room_id from combobox item data
+        room_text = self.rooms_list_combobox.itemText(index)
+        room_name, camera_list = room_text.split(': ')
+
+        contextMenu = QMenu(self)
+
+        delete_room_action = QAction("Delete Room", self)
+        delete_assignment_action = QAction("Delete Assignment", self)
+        modify_assignment_action = QAction("Modify Assignment", self)
+
+        contextMenu.addAction(delete_room_action)
+        contextMenu.addAction(delete_assignment_action)
+        contextMenu.addAction(modify_assignment_action)
+
+        delete_room_action.triggered.connect(lambda: self.delete_room(room_id))
+        delete_assignment_action.triggered.connect(lambda: self.delete_assignment(room_id, camera_list))
+        modify_assignment_action.triggered.connect(lambda: self.modify_assignment(room_id))
+
+        contextMenu.exec_(self.rooms_list_combobox.mapToGlobal(self.rooms_list_combobox.rect().bottomLeft()))
+
+    def add_room(self):
+        room_name, ok = QInputDialog.getText(self, "Add Room", "Enter room name:")
+
+        if ok and room_name:
+            # Check if the room already exists
+            rooms = get_rooms(self.user_id)
+            if any(room_name == existing_name for _, existing_name in rooms):
+                self.show_message(f"Room '{room_name}' already exists.")
+            else:
+                add_room(self.user_id, room_name)
+                self.populate_rooms_combobox()  # Refresh the combobox
+                self.show_message(f"Room '{room_name}' added successfully.")
+
+    def delete_room(self, room_id):
+        delete_room(room_id)
+        self.populate_rooms_combobox()
+        self.show_message(f"Room ID '{room_id}' and its assignments deleted.")
+
+    def delete_assignment(self, room_id, camera_list):
+        camera_ids = camera_list.split(', ')
+        for camera_id in camera_ids:
+            delete_assignment(room_id, camera_id)
+        self.populate_rooms_combobox()
+        self.show_message(f"Assignments for Room ID '{room_id}' deleted.")
+
+    def modify_assignment(self, room_id):
+        # Fetch all available cameras from the database
+        available_cameras = get_available_cameras()
+
+        # Show only available cameras in the context menu
+        cameraMenu = QMenu(self)
+        for camera_id in available_cameras:
+            action = QAction(f'Camera {camera_id}', self)
+            cameraMenu.addAction(action)
+            action.triggered.connect(lambda checked, cam_id=camera_id: self.assign_camera_to_room(room_id, cam_id))
+
+        cameraMenu.exec_(self.rooms_list_combobox.mapToGlobal(self.rooms_list_combobox.rect().bottomLeft()))
+
+    def assign_camera_to_room(self, room_id, camera_id):
+        # Assign the camera to the room and update the database
+        room_name = self.get_room_name_by_id(
+            room_id)  # Assuming this method exists, or you can fetch it from the database
+        assign_camera_to_room(room_id, camera_id)
+
+        # Refresh the combobox to reflect the new assignment
+        self.populate_rooms_combobox()
+        self.show_message(f"Camera {camera_id} assigned to room '{room_name}' (ID: {room_id}).")
+
+    def open_mapping_tab(self):
+        # Assuming mapping_tab is the third tab (index 2)
+        self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.mapping_tab))
+
     def toggle_face_recognition(self):
         self.use_face_recognition = not self.use_face_recognition
         if self.use_face_recognition:
@@ -73,6 +179,9 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
         else:
             logging.info("Turning off face recognition.")
             self.turn_on_camera(self.selected_camera_id)
+
+    def refresh(self):
+        self.available_cameras = list_capture_devices()
 
     def toggle_expand_video(self):
         if not self.is_expanded:
@@ -259,6 +368,7 @@ class MethodMapping(Ui_MainWindow, QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyle("fusion")
     MainWindow = QMainWindow()
     ui = MethodMapping("Surveillance Camera")
     ui.setupUi(MainWindow)

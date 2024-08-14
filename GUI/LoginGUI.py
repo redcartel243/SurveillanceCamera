@@ -1,6 +1,6 @@
 import sys
 from PyQt5 import QtWidgets
-from src import user_db_func
+from src import db_func
 
 
 class LoginWindow(QtWidgets.QWidget):
