@@ -1,6 +1,6 @@
 import sqlite3
 import bcrypt
-
+from src.device import list_capture_devices
 
 # Initializing the DataBase
 def init_db():
@@ -220,8 +220,36 @@ def get_all_rooms_with_cameras():
     conn.close()
     return rooms
 
+
+def add_new_cameras():
+    # Fetch all available cameras
+    available_cameras = list_capture_devices()
+
+    # Connect to the database
+    conn = sqlite3.connect('../SURVEILLANCE.db')
+    c = conn.cursor()
+
+    # Fetch existing cameras from the database
+    c.execute('SELECT camera_id FROM cameras')
+    existing_cameras = {row[0] for row in c.fetchall()}  # Convert to a set for faster lookups
+
+    # Add any new cameras that are not already in the database
+    new_cameras = [camera for camera in available_cameras if camera not in existing_cameras]
+
+    for camera_id in new_cameras:
+        # Insert into cameras table
+        c.execute('INSERT INTO cameras (camera_id, room_id) VALUES (?, NULL)', (camera_id,))
+
+        # Insert into camera_status table with is_assigned set to 0 (unassigned)
+        c.execute('INSERT INTO camera_status (camera_id, is_assigned, room_id) VALUES (?, 0, NULL)', (camera_id,))
+
+    conn.commit()
+    conn.close()
+
+    return len(new_cameras)  # Return the number of new cameras added
+
 # Test
-if __name__ == "__main__":
+"""if __name__ == "__main__":
     init_db()
 
     # User registration and verification
@@ -243,5 +271,5 @@ if __name__ == "__main__":
 
             assign_camera_to_room(room_id, f"camera_{room_id}_001")
             cameras = get_cameras(room_id)
-            print(f"Cameras in {room_name}: {[camera[0] for camera in cameras]}")
+            print(f"Cameras in {room_name}: {[camera[0] for camera in cameras]}")"""
 

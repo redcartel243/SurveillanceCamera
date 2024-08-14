@@ -1,4 +1,6 @@
 import cv2
+
+from src import db_func
 from src.device import list_capture_devices, get_device_info
 import numpy as np
 import logging
@@ -14,17 +16,17 @@ from ip_address_dialog import IPAddressDialog
 from face_recognition_service import FaceRecognitionService
 import sqlite3
 from db_func import get_rooms, get_cameras, add_room, assign_camera_to_room, delete_room, delete_assignment, \
-    modify_assignment, get_available_cameras, get_all_rooms_with_cameras
+    modify_assignment, get_available_cameras, get_all_rooms_with_cameras, add_new_cameras
 
 logging.basicConfig(level=logging.INFO)
 
-
 class MethodMapping(QMainWindow, Ui_MainWindow):
-    def __init__(self, title=""):
-        QMainWindow.__init__(self)
+    def __init__(self, title="", user_id=None):
+        super().__init__()
         self.title = title
+        self.user_id = user_id  # Set the user_id from the login window
         self.context_actions = ['Change Camera', 'Change Mapping', 'Show', 'Properties', 'Turn Off']
-        self.available_cameras = list_capture_devices()
+        self.available_cameras = None
         self.selected_camera_id = None
         self.context_button = None
 
@@ -41,7 +43,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
         self.use_face_recognition = False
         self.is_expanded = False  # Track the expanded state
-        self.user_id = 1  # Example user ID, should be set based on the logged-in user
 
     def setupUi(self, MainWindow):
         super().setupUi(MainWindow)
@@ -80,7 +81,41 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
         # Populate the combobox with rooms and cameras
         self.populate_rooms_combobox()
+        self.populate_mapping_list()  # Populate the mapping list on setup
         self.rooms_list_combobox.currentIndexChanged.connect(self.show_combobox_context_menu)
+
+        self.refresh_button.clicked.connect(self.refreshbutton)
+
+    def refreshbutton(self):
+        # Use the db_func method to add new cameras
+        new_camera_count = add_new_cameras()
+
+        # Refresh the list of available cameras and populate the combobox
+        self.populate_mapping_list()
+
+        # Notify the user
+        self.show_message(f"Loading cameras finished. {new_camera_count} new cameras added.")
+
+
+    def populate_mapping_list(self):
+        self.mapping_list.clear()  # Clear existing items in the list
+
+        conn = sqlite3.connect('../SURVEILLANCE.db')
+        c = conn.cursor()
+
+        # Fetch all cameras and their associated rooms
+        c.execute('''
+            SELECT cameras.camera_id, rooms.name
+            FROM cameras
+            LEFT JOIN rooms ON cameras.room_id = rooms.id
+        ''')
+
+        for row in c.fetchall():
+            camera_id, room_name = row
+            list_item_text = f"Camera {camera_id}: {room_name}"
+            self.mapping_list.addItem(list_item_text)
+
+        conn.close()
 
     def populate_rooms_combobox(self):
         self.rooms_list_combobox.clear()  # Clear existing items
@@ -158,9 +193,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         cameraMenu.exec_(self.rooms_list_combobox.mapToGlobal(self.rooms_list_combobox.rect().bottomLeft()))
 
     def assign_camera_to_room(self, room_id, camera_id):
+        # Fetch the room name directly from the database
+        conn = sqlite3.connect('../SURVEILLANCE.db')
+        c = conn.cursor()
+        c.execute('SELECT name FROM rooms WHERE id = ?', (room_id,))
+        room_name = c.fetchone()[0]  # Fetch the first column of the result, which is the room name
+        conn.close()
+
         # Assign the camera to the room and update the database
-        room_name = self.get_room_name_by_id(
-            room_id)  # Assuming this method exists, or you can fetch it from the database
         assign_camera_to_room(room_id, camera_id)
 
         # Refresh the combobox to reflect the new assignment
@@ -367,10 +407,18 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         QMessageBox.information(self, "Message", message)
 
 if __name__ == "__main__":
+    from GUI.LoginGUI import LoginWindow  # Import the LoginWindow from LoginGUI
+
+    db_func.init_db()  # Initialize the database
+
     app = QApplication(sys.argv)
-    app.setStyle("fusion")
-    MainWindow = QMainWindow()
-    ui = MethodMapping("Surveillance Camera")
-    ui.setupUi(MainWindow)
-    MainWindow.show()
+    login_window = LoginWindow()
+
+    if login_window.exec_() == QDialog.Accepted:
+        user_id = login_window.get_user_id()  # Assume LoginWindow provides a method to get the user ID
+        MainWindow = QMainWindow()
+        ui = MethodMapping("Surveillance Camera", user_id=user_id)
+        ui.setupUi(MainWindow)
+        MainWindow.show()
+
     sys.exit(app.exec_())
