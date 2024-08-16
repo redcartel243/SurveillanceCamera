@@ -20,6 +20,7 @@ from db_func import get_rooms, get_cameras, add_room, assign_camera_to_room, del
 
 logging.basicConfig(level=logging.INFO)
 
+
 class MethodMapping(QMainWindow, Ui_MainWindow):
     def __init__(self, title="", user_id=None):
         super().__init__()
@@ -40,6 +41,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.view_camera_3_id = None
         self.view_camera_4_id = None
         self.ip_cameras = []
+        self.free_cameras = []
 
         self.use_face_recognition = False
         self.is_expanded = False  # Track the expanded state
@@ -47,6 +49,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
     def setupUi(self, MainWindow):
         super().setupUi(MainWindow)
         MainWindow.setWindowTitle(self.title)
+
+        # Set up connections
         self.context_button_1.clicked.connect(self.show_context_menu)
         self.context_button_2.clicked.connect(self.show_context_menu)
         self.context_button_3.clicked.connect(self.show_context_menu)
@@ -57,18 +61,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.view_camera_4.clicked.connect(lambda: self.view_camera(self.view_camera_4_id))
         self.vision_button.clicked.connect(self.toggle_face_recognition)
         self.expand_Button.clicked.connect(self.toggle_expand_video)
-        self.refresh_button.clicked.connect(self.refresh)
-
-        # Connect the edit_mapping button to open the mapping_tab
+        self.refresh_button.clicked.connect(self.refreshbutton)
         self.edit_mapping.clicked.connect(self.open_mapping_tab)
-
-        # Connect the add_room_button to add a room
         self.add_room_button.clicked.connect(self.add_room)
 
         # Initialize QLabel for displaying video
         self.video_label = QLabel(self.scrollAreaWidgetContents)
         self.video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.video_label.setScaledContents(True)
+        self.video_label.setScaledContents(True)  # Ensures video scales with the label
         self.video_label.setObjectName("video_label")
 
         # Create a widget to hold the video and button
@@ -84,11 +84,9 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.populate_mapping_list()  # Populate the mapping list on setup
         self.rooms_list_combobox.currentIndexChanged.connect(self.show_combobox_context_menu)
 
-        self.refresh_button.clicked.connect(self.refreshbutton)
-
     def refreshbutton(self):
         # Use the db_func method to add new cameras
-        new_camera_count = add_new_cameras()
+        self.available_cameras, new_camera_count = add_new_cameras()
 
         # Refresh the list of available cameras and populate the combobox
         self.populate_mapping_list()
@@ -96,6 +94,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         # Notify the user
         self.show_message(f"Loading cameras finished. {new_camera_count} new cameras added.")
 
+    def refresh(self):
+        self.available_cameras = list_capture_devices()
 
     def populate_mapping_list(self):
         self.mapping_list.clear()  # Clear existing items in the list
@@ -220,9 +220,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             logging.info("Turning off face recognition.")
             self.turn_on_camera(self.selected_camera_id)
 
-    def refresh(self):
-        self.available_cameras = list_capture_devices()
-
     def toggle_expand_video(self):
         if not self.is_expanded:
             # Save the current geometry before expanding
@@ -242,6 +239,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.fullscreen_layout.addWidget(self.expand_Button, 0, 0)
             self.fullscreen_layout.setAlignment(self.expand_Button, Qt.AlignBottom | Qt.AlignRight)
 
+            # Show fullscreen
             self.fullscreen_container.showFullScreen()
             self.is_expanded = True
         else:
@@ -259,6 +257,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.video_widget_container.layout().addWidget(self.video_label)
             self.video_widget_container.layout().addWidget(self.expand_Button)
             self.video_widget_container.layout().setAlignment(self.expand_Button, Qt.AlignBottom | Qt.AlignRight)
+
+            # Ensure the video label resizes its contents correctly
+            self.video_label.setScaledContents(True)
+            self.video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+            # Trigger a resize to make sure the content scales properly
+            self.video_widget_container.resize(self.video_widget_container.size())
+            self.video_label.update()
 
             self.is_expanded = False
 
@@ -296,10 +302,18 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.face_recognition_thread = None
 
     def display_frame(self):
-        ret, frame = self.cap.read()
+        """ret, frame = self.cap.read()
         if ret:
             image = self.convert_frame_to_qimage(frame)
-            self.update_image(image)
+            self.update_image(image)"""
+        ret, frame = self.cap.read()
+        if ret:
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, channel = frame.shape
+            bytes_per_line = 3 * width
+            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            scaled_q_img = q_img.scaled(self.video_label.size(), Qt.KeepAspectRatio)
+            self.video_label.setPixmap(QPixmap.fromImage(scaled_q_img))
 
     def update_image(self, image: QImage):
         self.video_label.setPixmap(QPixmap.fromImage(image))
@@ -309,7 +323,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
     def update_face_recognition_image(self, frame):
         try:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            image = QImage(frame_rgb.data, frame_rgb.shape[1], frame_rgb.shape[0], frame_rgb.strides[0], QImage.Format_RGB888)
+            image = QImage(frame_rgb.data, frame_rgb.shape[1], frame_rgb.shape[0], frame_rgb.strides[0],
+                           QImage.Format_RGB888)
             self.video_label.setPixmap(QPixmap.fromImage(image))
         except Exception as e:
             logging.error(f"Exception in update_face_recognition_image: {e}")
@@ -324,7 +339,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
     @staticmethod
     def convert_frame_to_qimage(frame):
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        return QImage(rgb_frame.data, rgb_frame.shape[1], rgb_frame.shape[0], rgb_frame.strides[0], QImage.Format_RGB888)
+        return QImage(rgb_frame.data, rgb_frame.shape[1], rgb_frame.shape[0], rgb_frame.strides[0],
+                      QImage.Format_RGB888)
 
     @staticmethod
     def convert_qimage_to_frame(image):
@@ -345,13 +361,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def show_camera_menu(self):
         try:
-            print(self.available_cameras)
+            self.free_cameras = get_available_cameras()
+            self.free_cameras = [int(x) for x in self.free_cameras]
             cameraMenu = QMenu(self)
             add_ip_action = QAction("Add IP Address", self)
             add_ip_action.triggered.connect(self.show_ip_address_dialog)
             cameraMenu.addAction(add_ip_action)
             cameraMenu.addSeparator()
-            for camera_id in self.available_cameras + self.ip_cameras:
+            for camera_id in self.free_cameras + self.ip_cameras:
                 action = QAction(f'Camera {camera_id}', self)
                 cameraMenu.addAction(action)
                 action.triggered.connect(lambda checked, cam_id=camera_id: self.assign_camera_to_button(cam_id))
@@ -405,6 +422,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def show_message(self, message):
         QMessageBox.information(self, "Message", message)
+
 
 if __name__ == "__main__":
     from GUI.LoginGUI import LoginWindow  # Import the LoginWindow from LoginGUI
