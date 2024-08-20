@@ -55,7 +55,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.video_label.setScaledContents(True)
         self.video_label.setObjectName("video_label")
-        self.video_label.setMinimumSize(500, 500)  # Set a reasonable minimum size
+        self.video_label.setMinimumSize(700, 700)  # Set a reasonable minimum size
 
         # Create a widget to hold the video and button
         self.video_widget_container = QWidget(central_widget)
@@ -66,7 +66,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         # Ensure the container expands to fill the space
         self.video_widget_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self.gridLayout_2.addWidget(self.video_widget_container, 0, 0, 1, 1)
+        self.gridLayout_3.addWidget(self.video_widget_container, 0, 0, 1, 1)
 
         # Populate the combobox with rooms and cameras
         self.populate_rooms_combobox()
@@ -75,6 +75,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def refreshbutton(self):
         new_camera_count = db_func.add_new_cameras()
+        print(new_camera_count)
         self.populate_mapping_list()
         self.show_message(f"Loading cameras finished. {new_camera_count} new cameras added.")
 
@@ -87,18 +88,19 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
         for room_name, cameras in rooms_with_cameras.items():
             for camera in cameras:
-                list_item_text = f"Camera {camera}: {room_name}"
+                if camera == "No cameras assigned":
+                    list_item_text = f"{room_name}: {camera}"#Because here no camera assigned
+                else:
+                    list_item_text = f"{room_name}: Camera {camera}"
                 self.mapping_list.addItem(list_item_text)
 
     def populate_rooms_combobox(self):
         self.rooms_list_combobox.clear()
         rooms = db_func.get_all_rooms_with_cameras()
-
         for room_name, cameras in rooms.items():
             camera_list = ', '.join(cameras)
             display_text = f"{room_name}: {camera_list}"
             self.rooms_list_combobox.addItem(display_text)
-
         self.available_cameras = db_func.get_available_cameras()
 
     def show_combobox_context_menu(self, index):
@@ -124,6 +126,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         delete_assignment_action.triggered.connect(lambda: self.delete_assignment(room_id, camera_list))
         modify_assignment_action.triggered.connect(lambda: self.modify_assignment(room_id))
 
+        # Show the context menu
         contextMenu.exec_(self.rooms_list_combobox.mapToGlobal(self.rooms_list_combobox.rect().bottomLeft()))
 
     def add_room(self):
@@ -163,6 +166,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         db_func.assign_camera_to_room(room_id, camera_id)
         self.populate_rooms_combobox()
         self.show_message(f"Camera {camera_id} assigned to room '{room_name}' (ID: {room_id}).")
+
 
     def open_mapping_tab(self):
         self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.mapping_tab))
