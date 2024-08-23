@@ -340,7 +340,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def show_camera_menu(self):
         try:
-            self.free_cameras = db_func.get_available_cameras()
+            self.free_cameras = db_func.get_cameras()
             self.free_cameras = [int(x) for x in self.free_cameras]
             cameraMenu = QMenu(self)
             add_ip_action = QAction("Add IP Address", self)

@@ -159,11 +159,11 @@ def get_available_cameras():
     return [str(camera[0]) for camera in available_cameras]
 
 
-def get_cameras(room_id):
+def get_cameras():
     conn = sqlite3.connect('../SURVEILLANCE.db')
     c = conn.cursor()
-    c.execute('SELECT camera_id FROM cameras WHERE room_id = ?', (room_id,))
-    cameras = c.fetchall()
+    c.execute('SELECT camera_id FROM cameras')
+    cameras = {str(row[0]) for row in c.fetchall()}
     conn.close()
     return [str(camera[0]) for camera in cameras]
 
