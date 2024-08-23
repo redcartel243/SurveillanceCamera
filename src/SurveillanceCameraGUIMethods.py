@@ -29,6 +29,9 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.face_recognition_thread = None
         self.is_expanded = False  # Track the expanded state
         self.ip_cameras = []
+        self.video_gif = None  # QMovie for displaying the GIF
+        # Placeholder image for when the video is off
+        self.placeholder_image = QPixmap("../2024-08-23 17_58_41-Untitled_ ‎- Paint 3D.png")
 
     def setupUi(self, MainWindow):
         super().setupUi(MainWindow)
@@ -56,6 +59,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.video_label.setScaledContents(True)
         self.video_label.setObjectName("video_label")
         self.video_label.setMinimumSize(700, 700)  # Set a reasonable minimum size
+        self.video_label.setAlignment(Qt.AlignCenter)
+        self.video_label.setContentsMargins(10, 10, 10, 10)  # Optional, for better padding
 
         # Create a widget to hold the video and button
         self.video_widget_container = QWidget(central_widget)
@@ -67,11 +72,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.video_widget_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.gridLayout_3.addWidget(self.video_widget_container, 0, 0, 1, 1)
+        self.gridLayout_3.setContentsMargins(0, 0, 0, 0)  # Remove margins around the grid
 
         # Populate the combobox with rooms and cameras
         self.populate_rooms_combobox()
         self.populate_mapping_list()
-        self.rooms_list_combobox.currentIndexChanged.connect(self.show_combobox_context_menu)
+        self.rooms_list_combobox.activated.connect(self.show_combobox_context_menu)
+        # Show the placeholder image when the video is off
+        self.show_placeholder_image()
 
     def refreshbutton(self):
         new_camera_count = db_func.add_new_cameras()
@@ -247,6 +255,34 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         if self.face_recognition_thread:
             self.face_recognition_thread.stop()
             self.face_recognition_thread = None
+        # Show the placeholder image when the video is off
+        self.show_placeholder_image()
+
+    # Method to display a placeholder image when the video is off
+    def show_placeholder_image(self):
+        # Load the placeholder image
+        self.placeholder_image = QPixmap("../2024-08-23 17_58_41-Untitled_ ‎- Paint 3D.png")
+
+        # Debug: Check if the image is loaded
+        if self.placeholder_image.isNull():
+            print("Failed to load the image. Check the path and format.")
+            return
+
+        # Scale the image to fit the QLabel size while maintaining aspect ratio
+        scaled_placeholder = self.placeholder_image.scaled(
+            self.video_label.size(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation
+        )
+
+        # Set the scaled image to the QLabel
+        self.video_label.setPixmap(scaled_placeholder)
+        self.video_label.setAlignment(Qt.AlignCenter)  # Center the image within the QLabel
+
+        # Debug: Print sizes to understand scaling issues
+        print("Label size:", self.video_label.size())
+        print("Image size before scaling:", self.placeholder_image.size())
+        print("Image size after scaling:", scaled_placeholder.size())
 
     def display_frame(self):
         ret, frame = self.cap.read()
