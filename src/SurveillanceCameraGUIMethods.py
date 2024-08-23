@@ -4,7 +4,7 @@ import logging
 import sys
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QMessageBox, QLabel, QWidget, QGridLayout, \
-    QInputDialog, QSizePolicy, QDialog
+    QInputDialog, QSizePolicy, QDialog, QFileDialog, QVBoxLayout
 from PyQt5.QtGui import QPixmap, QImage
 from CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
@@ -13,6 +13,7 @@ from face_recognition_service import FaceRecognitionService
 from src import db_func
 
 logging.basicConfig(level=logging.INFO)
+
 
 class MethodMapping(QMainWindow, Ui_MainWindow):
     def __init__(self, title="", user_id=None):
@@ -30,7 +31,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.is_expanded = False  # Track the expanded state
         self.ip_cameras = []
         self.video_gif = None  # QMovie for displaying the GIF
-        # Placeholder image for when the video is off
         self.placeholder_image = QPixmap("../2024-08-23 17_58_41-Untitled_ ‎- Paint 3D.png")
 
     def setupUi(self, MainWindow):
@@ -49,6 +49,9 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.refresh_button.clicked.connect(self.refreshbutton)
         self.edit_mapping.clicked.connect(self.open_mapping_tab)
         self.add_room_button.clicked.connect(self.add_room)
+
+        # Additional button and label for map change
+        self.change_map_button.clicked.connect(self.change_map)
 
         # Get the central widget of the MainWindow
         central_widget = MainWindow.centralWidget()
@@ -78,8 +81,28 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.populate_rooms_combobox()
         self.populate_mapping_list()
         self.rooms_list_combobox.activated.connect(self.show_combobox_context_menu)
+
         # Show the placeholder image when the video is off
         self.show_placeholder_image()
+
+    def change_map(self):
+        # Open a file dialog to select an image file
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Map Image", "", "Image Files (*.png *.jpg *.bmp)")
+
+        if file_path:  # Check if a file was selected
+            # Load the selected image into a QPixmap
+            map_image = QPixmap(file_path)
+
+            if not map_image.isNull():  # Check if the image loaded successfully
+                # Scale the image to fit the label size, keeping the aspect ratio
+                scaled_image = map_image.scaled(self.map_display.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+                # Set the scaled image to the map_display label
+                self.map_display.setPixmap(map_image)
+            else:
+                print("Failed to load the image. Check the file format and path.")
+        else:
+            print("No file selected.")
 
     def refreshbutton(self):
         new_camera_count = db_func.add_new_cameras()
@@ -97,7 +120,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         for room_name, cameras in rooms_with_cameras.items():
             for camera in cameras:
                 if camera == "No cameras assigned":
-                    list_item_text = f"{room_name}: {camera}"#Because here no camera assigned
+                    list_item_text = f"{room_name}: {camera}"  # Because here no camera assigned
                 else:
                     list_item_text = f"{room_name}: Camera {camera}"
                 self.mapping_list.addItem(list_item_text)
@@ -174,7 +197,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         db_func.assign_camera_to_room(room_id, camera_id)
         self.populate_rooms_combobox()
         self.show_message(f"Camera {camera_id} assigned to room '{room_name}' (ID: {room_id}).")
-
 
     def open_mapping_tab(self):
         self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.mapping_tab))
