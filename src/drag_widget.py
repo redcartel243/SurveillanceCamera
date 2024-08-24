@@ -114,14 +114,12 @@ class DragWidget(QWidget):
             if self.orientation == Qt.Orientation.Vertical:
                 # Drag drop vertically.
                 drop_here = (
-                    pos.y() >= w.y() - spacing
-                    and pos.y() <= w.y() + w.size().height() + spacing
+                        w.y() - spacing <= pos.y() <= w.y() + w.size().height() + spacing
                 )
             else:
                 # Drag drop horizontally.
                 drop_here = (
-                    pos.x() >= w.x() - spacing
-                    and pos.x() <= w.x() + w.size().width() + spacing
+                        w.x() - spacing <= pos.x() <= w.x() + w.size().width() + spacing
                 )
 
             if drop_here:
@@ -142,32 +140,3 @@ class DragWidget(QWidget):
                 # The target indicator has no data.
                 data.append(w.data)
         return data
-
-
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.drag = DragWidget(orientation=Qt.Orientation.Vertical)
-        for n, l in enumerate(["A", "B", "C", "D"]):
-            item = DragItem(l)
-            item.set_data(n)  # Store the data.
-            self.drag.add_item(item)
-
-        # Print out the changed order.
-        self.drag.orderChanged.connect(print)
-
-        container = QWidget()
-        layout = QVBoxLayout()
-        layout.addStretch(1)
-        layout.addWidget(self.drag)
-        layout.addStretch(1)
-        container.setLayout(layout)
-
-        self.setCentralWidget(container)
-
-
-app = QApplication([])
-w = MainWindow()
-w.show()
-
-app.exec_()
