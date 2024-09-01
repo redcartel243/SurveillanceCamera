@@ -5,7 +5,13 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from dataloader import load_config
+try:
+    from dataloader import load_config
+except ImportError:
+    try:
+        from .dataloader import load_config
+    except ImportError:
+        from src.dataloader import load_config
 
 config = load_config()
 

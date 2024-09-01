@@ -155,6 +155,7 @@ def get_available_cameras():
     c = conn.cursor()
     c.execute('SELECT camera_id FROM camera_status WHERE is_assigned = 0')
     available_cameras = c.fetchall()
+    print(available_cameras)
     conn.close()
     return [str(camera[0]) for camera in available_cameras]
 

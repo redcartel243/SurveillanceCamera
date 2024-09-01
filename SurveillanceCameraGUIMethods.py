@@ -6,10 +6,10 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMenu, QAction, QMessageBox, QLabel, QWidget, QGridLayout, \
     QInputDialog, QSizePolicy, QDialog, QFileDialog, QVBoxLayout
 from PyQt5.QtGui import QPixmap, QImage
-from CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
+from src.CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
-from ip_address_dialog import IPAddressDialog
-from face_recognition_service import FaceRecognitionService
+from src.ip_address_dialog import IPAddressDialog
+from src.face_recognition_service import FaceRecognitionService
 from src import db_func
 
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +31,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.is_expanded = False  # Track the expanded state
         self.ip_cameras = []
         self.video_gif = None  # QMovie for displaying the GIF
-        self.placeholder_image = QPixmap("../2024-08-23 17_58_41-Untitled_ ‎- Paint 3D.png")
+        self.placeholder_image = QPixmap("Black Image.png")
+        self.use_face_recognition = False
 
     def setupUi(self, MainWindow):
         super().setupUi(MainWindow)
@@ -70,12 +71,13 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.video_widget_container.setLayout(QGridLayout())
         self.video_widget_container.layout().addWidget(self.video_label, 0, 0)
         self.video_widget_container.layout().addWidget(self.expand_Button, 0, 0, Qt.AlignBottom | Qt.AlignRight)
+        self.video_widget_container.layout().addWidget(self.vision_button, 0, 0, Qt.AlignTop | Qt.AlignLeft)
 
         # Ensure the container expands to fill the space
         self.video_widget_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        self.gridLayout_3.addWidget(self.video_widget_container, 0, 0, 1, 1)
-        self.gridLayout_3.setContentsMargins(0, 0, 0, 0)  # Remove margins around the grid
+        self.gridLayout_2.addWidget(self.video_widget_container, 0, 0, 1, 1)
+        self.gridLayout_2.setContentsMargins(0, 0, 0, 0)  # Remove margins around the grid
 
         # Populate the combobox with rooms and cameras
         self.populate_rooms_combobox()
@@ -112,6 +114,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def refresh(self):
         self.available_cameras = db_func.get_available_cameras()
+        self.populate_rooms_combobox()
 
     def populate_mapping_list(self):
         self.mapping_list.clear()
@@ -187,6 +190,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         available_cameras = db_func.get_available_cameras()
         cameraMenu = QMenu(self)
         for camera_id in available_cameras:
+            print(camera_id)
             action = QAction(f'Camera {camera_id}', self)
             cameraMenu.addAction(action)
             action.triggered.connect(lambda checked, cam_id=camera_id: self.assign_camera_to_room(room_id, cam_id))
@@ -244,6 +248,19 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.video_label.update()
 
             self.is_expanded = False
+    
+    def turn_on_face_recognition(self, camera_id):
+        try:
+            self.stop_all_threads()
+            self.video_label.setVisible(True)
+            if camera_id is not None:
+                self.face_recognition_thread = FaceRecognitionService(camera_id)
+                self.face_recognition_thread.ImageUpdated.connect(self.update_face_recognition_image)
+                self.face_recognition_thread.start()
+                print(f"Face recognition started for camera {camera_id}")
+            self.selected_camera_id = camera_id
+        except Exception as e:
+            logging.error(f"Exception in turn_on_face_recognition: {e}")
 
     def turn_on_camera(self, camera_id):
         try:
@@ -283,7 +300,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
     # Method to display a placeholder image when the video is off
     def show_placeholder_image(self):
         # Load the placeholder image
-        self.placeholder_image = QPixmap("../2024-08-23 17_58_41-Untitled_ ‎- Paint 3D.png")
+        self.placeholder_image = QPixmap("Black Image.png")
 
         # Debug: Check if the image is loaded
         if self.placeholder_image.isNull():

@@ -4,12 +4,18 @@ import cv2
 import numpy as np
 import face_recognition
 from threading import Thread
-from dataloader import load_config
-from emailer import send_email
-from tts import speak
+try:
+    from dataloader import load_config
+except ImportError:
+    try:
+        from .dataloader import load_config
+    except ImportError:
+        from src.dataloader import load_config
+from src.emailer import send_email
+from src.tts import speak
 import logging
 from PyQt5.QtCore import pyqtSignal, QObject, QThread
-import Data
+import src.Data
 
 config = load_config()
 

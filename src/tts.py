@@ -1,5 +1,11 @@
 import pyttsx3
-from dataloader import load_config
+try:
+    from dataloader import load_config
+except ImportError:
+    try:
+        from .dataloader import load_config
+    except ImportError:
+        from src.dataloader import load_config
 
 config = load_config()
 
