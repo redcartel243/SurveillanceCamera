@@ -19,7 +19,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.title = title
         self.user_id = user_id
         self.context_actions = ['Change Camera', 'Change Mapping', 'Show', 'Properties', 'Turn Off']
-        self.available_cameras = None
+        self.available_cameras = []  # List of available cameras
         self.selected_camera_id = None
         self.context_button = None
         self.camera = None
@@ -31,12 +31,11 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.video_gif = None
         self.placeholder_image = QPixmap("Black Image.png")
         self.use_face_recognition = False
-        
-        # Initialize the view camera IDs to None
-        self.view_camera_1_id = None
-        self.view_camera_2_id = None
-        self.view_camera_3_id = None
-        self.view_camera_4_id = None
+        self.view_camera_ids = []  # Store camera IDs for all video labels
+        self.current_page = 0  # Track the current page of cameras
+        self.max_cameras_per_page = 4  # Max cameras to display per page
+        self.video_labels = []  # List to hold video labels
+
         print("MethodMapping initialized")
 
     def setupUi(self, MainWindow):
@@ -56,6 +55,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.edit_mapping.clicked.connect(self.open_mapping_tab)
         self.add_room_button.clicked.connect(self.add_room)
         self.change_map_button.clicked.connect(self.change_map)
+        self.next_button.clicked.connect(self.next_page)
+        self.previous_button.clicked.connect(self.previous_page)
 
         central_widget = MainWindow.centralWidget()
 
@@ -67,8 +68,9 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.video_label.setAlignment(Qt.AlignCenter)
         self.video_label.setContentsMargins(10, 10, 10, 10)
 
-        self.video_widget_container = QWidget(central_widget)
-        self.video_widget_container.setLayout(QGridLayout())
+        self.video_widget_container = QWidget(self)
+        self.video_layout = QGridLayout(self.video_widget_container)
+        self.video_widget_container.setLayout(self.video_layout)
         self.video_widget_container.layout().addWidget(self.video_label, 0, 0)
         self.video_widget_container.layout().addWidget(self.expand_Button, 0, 0, Qt.AlignBottom | Qt.AlignRight)
         self.video_widget_container.layout().addWidget(self.vision_button, 0, 0, Qt.AlignTop | Qt.AlignLeft)
@@ -83,6 +85,45 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.rooms_list_combobox.activated.connect(self.show_combobox_context_menu)
 
         self.show_placeholder_image()
+
+
+
+    def next_page(self):
+        """Move to the next page of camera feeds."""
+        if (self.current_page + 1) * self.max_cameras_per_page < len(self.available_cameras):
+            self.current_page += 1
+            self.update_video_display()
+
+    def previous_page(self):
+        """Move to the previous page of camera feeds."""
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.update_video_display()
+
+    
+    def update_video_display(self):
+        """Update the video display based on the current page of cameras."""
+        # Clear existing layout
+        for i in reversed(range(self.video_layout.count())): 
+            self.video_layout.itemAt(i).widget().setParent(None)
+
+        # Display video labels for the current page
+        start_index = self.current_page * self.max_cameras_per_page
+        end_index = start_index + self.max_cameras_per_page
+        current_cameras = self.available_cameras[start_index:end_index]
+
+        self.video_labels = []  # Clear the video labels list
+
+        for i, camera_id in enumerate(current_cameras):
+            video_label = QLabel(self)
+            video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            video_label.setScaledContents(True)
+            video_label.setObjectName(f"video_label_{i}")
+            video_label.setMinimumSize(300, 300)
+            video_label.setPixmap(self.placeholder_image)  # Placeholder until video feed starts
+            self.video_layout.addWidget(video_label, i // 2, i % 2)
+            self.video_labels.append(video_label)
+
 
     def toggle_face_recognition(self):
         self.use_face_recognition = not self.use_face_recognition
@@ -112,7 +153,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             image = QImage(frame_rgb.data, frame_rgb.shape[1], frame_rgb.shape[0], frame_rgb.strides[0],
                            QImage.Format_RGB888)
-            self.video_label.setPixmap(QPixmap.fromImage(image))
+            if self.video_labels:
+                self.video_labels[0].setPixmap(QPixmap.fromImage(image))  # Display on the first video label
         except Exception as e:
             print(f"Exception in update_image: {e}")
 
@@ -143,9 +185,12 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.show_placeholder_image()
 
     def turn_on_camera(self, camera_id):
+        """Turn on the camera feed for a specific camera ID."""
+        if camera_id is None:
+            self.show_message("No camera assigned to this slot.")
+            return
         try:
             self.stop_all_threads()
-            self.video_label.setVisible(True)
             if camera_id is not None:
                 if isinstance(camera_id, str):
                     print(f"Trying to connect to IP camera at {camera_id}")
@@ -160,10 +205,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                     self.timer.start(30)
             self.selected_camera_id = camera_id
         except Exception as e:
-            print(f"Exception in turn_on_camera: {e}")
+            logging.error(f"Exception in turn_on_camera: {e}")
 
     def show_placeholder_image(self):
-        self.video_label.setPixmap(self.placeholder_image)
+        """Show placeholder image on all labels."""
+        for i in range(self.max_cameras_per_page):
+            label = QLabel(self)
+            label.setPixmap(self.placeholder_image)
+            self.video_layout.addWidget(label, i // 2, i % 2)
 
     def change_map(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Map Image", "", "Image Files (*.png *.jpg *.bmp)")
@@ -198,6 +247,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             display_text = f"{room_name}: {camera_list}"
             self.rooms_list_combobox.addItem(display_text)
         self.available_cameras = db_func.get_available_cameras()
+        self.update_video_display()
 
     def show_combobox_context_menu(self, index):
         if index < 0:
@@ -392,7 +442,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         
 
     def show_message(self, message):
-        QMessageBox.information(self, "Information", message)
+        QMessageBox.information(self, "Message", message)
 
     def display_frame(self):
         ret, frame = self.cap.read()
