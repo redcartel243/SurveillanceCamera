@@ -88,6 +88,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
         # Clear existing layout
         while self.video_layout.count():
+            
             item = self.video_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
@@ -108,6 +109,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             video_label.setMinimumSize(300, 300)
             video_label.setPixmap(self.placeholder_image)  # Placeholder until video feed starts
             self.video_layout.addWidget(video_label, i // 2, i % 2)
+            print(video_label.size,camera_id,current_cameras)
             self.video_labels.append(video_label)
 
             # Turn on camera and display the feed
@@ -196,6 +198,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def turn_on_camera(self, camera_id, label_index):
         """Turns on the specified camera and displays the feed in the corresponding video label."""
+        print("here is the label index {index}".format(index=label_index))
         try:
             if not (0 <= label_index < len(self.video_labels)):
                 print(f"Invalid label index: {label_index}")
@@ -211,6 +214,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                     self.ip_camera_threads[label_index] = ip_thread
                     print(f"Connected to IP camera at {camera_id}")
                 else:
+                    print("Connected to physical camera")
                     cap = cv2.VideoCapture(int(camera_id))
                     if cap.isOpened():
                         self.caps[label_index] = cap
@@ -218,6 +222,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                         timer.timeout.connect(lambda: self.display_frame(video_label, cap))
                         timer.start(30)
                         self.timers[label_index] = timer
+                        print("hehehehehe")
                     else:
                         print(f"Failed to open camera {camera_id}")
         except Exception as e:
@@ -255,8 +260,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def populate_mapping_list_and_camera_view(self):
         self.mapping_list.clear()
+        print("yooooo")
         rooms_with_cameras = db_func.get_all_rooms_with_cameras()
-        print(rooms_with_cameras)
 
         # Create a list of all cameras, assigned and unassigned, sorted alphabetically
         all_cameras = set()
