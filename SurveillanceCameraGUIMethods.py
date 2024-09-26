@@ -4,14 +4,44 @@ import logging
 import sys
 from PyQt5.QtCore import QTimer, Qt, pyqtSignal, pyqtSlot, QObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QWidget, QGridLayout, \
-    QDialog, QSizePolicy, QFileDialog, QMenu, QAction, QInputDialog
+    QDialog, QSizePolicy, QFileDialog, QMenu, QAction, QInputDialog, QPushButton, QVBoxLayout, QHBoxLayout
 from PyQt5.QtGui import QPixmap, QImage
 from src.CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
 from src.ip_address_dialog import IPAddressDialog
 from src.face_recognition_service import FaceRecognitionService
 from src import db_func
-from functools import partial
+
+
+class VideoLabel(QWidget):
+    """Custom video label with an icon button to allow specific actions like expanding."""
+    def __init__(self, index, parent=None):
+        super().__init__(parent)
+        self.index = index
+        self.label = QLabel(self)
+        self.label.setScaledContents(True)
+        self.label.setMinimumSize(300, 300)
+
+        # Create a button inside the label
+        self.icon_button = QPushButton(self)
+        self.icon_button.setIcon(self.style().standardIcon(QPushButton().style().SP_ArrowDown))  # Adjust icon here
+        self.icon_button.setFixedSize(24, 24)
+        self.icon_button.setStyleSheet("background-color: rgba(0, 0, 0, 0.5);")  # Semi-transparent background
+        self.icon_button.clicked.connect(self.icon_clicked)  # Connect to action
+
+        # Layout for positioning
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.label)
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.icon_button)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+    def icon_clicked(self):
+        # Emit a signal or call a method on click
+        print(f"Icon clicked on label {self.index}")
+        self.parent().enter_partial_expand(self.index)
 
 
 class MethodMapping(QMainWindow, Ui_MainWindow):
@@ -43,9 +73,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
             self.frame_updated.connect(self.on_frame_updated)  # Connect the signal to the slot
 
-                # Connect signals after UI components are initialized
-            self.frame_updated.connect(self.on_frame_updated)
-
             # Populate combo boxes and camera views after UI is set up
             self.populate_rooms_combobox()
             self.populate_mapping_list_and_camera_view()
@@ -56,12 +83,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         super().setupUi(self)
         self.setWindowTitle(self.title)
 
-        self.context_button_1.clicked.connect(self.show_context_menu)
-        self.context_button_2.clicked.connect(self.show_context_menu)
-        self.context_button_3.clicked.connect(self.show_context_menu)
-        self.context_button_4.clicked.connect(self.show_context_menu)
         self.vision_button.clicked.connect(self.toggle_face_recognition)
-        self.expand_Button.clicked.connect(self.toggle_expand_video)
         self.refresh_button.clicked.connect(self.refreshbutton)
         self.edit_mapping.clicked.connect(self.open_mapping_tab)
         self.add_room_button.clicked.connect(self.add_room)
@@ -74,19 +96,21 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         # Initialize video display layout dynamically
         self.video_widget_container = QWidget(self)
         self.video_layout = QGridLayout(self.video_widget_container)
-        self.gridLayout_2.addWidget(self.video_widget_container, 0, 0, 1, 1)
+        self.gridLayout.addWidget(self.video_widget_container, 0, 0, 1, 1)
 
         # Initialize video labels and add to layout
         for i in range(self.max_cameras_per_page):
-            video_label = QLabel(self)
-            video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            video_label.setScaledContents(True)
-            video_label.setObjectName(f"video_label_{i}")
-            video_label.setMinimumSize(300, 300)
-            video_label.setPixmap(self.placeholder_image)  # Placeholder until video feed starts
+            video_label = VideoLabel(i, self)
+            video_label.label.setPixmap(self.placeholder_image)
             self.video_layout.addWidget(video_label, i // 2, i % 2)
             self.video_labels.append(video_label)
             self.label_valid_flags[i] = False  # Initially no active feed
+
+        # Add expand all button
+        self.expand_all_button = QPushButton("Expand All", self)
+        self.expand_all_button.setFixedSize(100, 30)
+        self.expand_all_button.clicked.connect(self.toggle_expand_all)
+        self.gridLayout.addWidget(self.expand_all_button, 1, 0, 1, 1)  # Adjust positioning as needed
 
         self.show_placeholder_image()
 
@@ -126,17 +150,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             for i in range(self.max_cameras_per_page):
                 if i < len(current_cameras):
                     camera_id = current_cameras[i]
-                    if i >= len(self.video_labels):
-                        # Create a new label if not enough labels
-                        video_label = QLabel(self)
-                        video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-                        video_label.setScaledContents(True)
-                        video_label.setObjectName(f"video_label_{i}")
-                        video_label.setMinimumSize(300, 300)
-                        video_label.setPixmap(self.placeholder_image)  # Placeholder until video feed starts
-                        self.video_labels.append(video_label)
-                    else:
-                        video_label = self.video_labels[i]
+                    video_label = self.video_labels[i]
                     self.video_layout.addWidget(video_label, i // 2, i % 2)
                     self.label_valid_flags[i] = True  # Mark label as valid
 
@@ -144,19 +158,9 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                     self.turn_on_camera(camera_id, i)
                 else:
                     # No camera for this label, show placeholder
-                    if i < len(self.video_labels):
-                        video_label = self.video_labels[i]
-                    else:
-                        # Create a new label if not enough labels
-                        video_label = QLabel(self)
-                        video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-                        video_label.setScaledContents(True)
-                        video_label.setObjectName(f"video_label_{i}")
-                        video_label.setMinimumSize(300, 300)
-                        video_label.setPixmap(self.placeholder_image)
-                        self.video_labels.append(video_label)
+                    video_label = self.video_labels[i]
                     self.video_layout.addWidget(video_label, i // 2, i % 2)
-                    video_label.setPixmap(self.placeholder_image)
+                    video_label.label.setPixmap(self.placeholder_image)
                     self.label_valid_flags[i] = False  # No active feed
 
             # Handle pagination buttons
@@ -166,9 +170,31 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         except Exception as e:
             print(f"Exception in update_video_display: {e}")
 
+    def toggle_expand_all(self):
+        """Toggles the main window to a larger size containing all video feeds."""
+        if self.is_expanded:
+            self.showNormal()  # Exit full screen
+            self.expand_all_button.setText("Expand All")
+        else:
+            self.showMaximized()  # Full screen with all video feeds visible
+            self.expand_all_button.setText("Shrink All")
+        self.is_expanded = not self.is_expanded
 
-
-
+    def enter_partial_expand(self, index):
+        """Expand only the selected video label."""
+        if self.is_expanded:
+            self.showNormal()  # Return to normal mode
+            self.is_expanded = False
+            for video_label in self.video_labels:
+                video_label.setFixedSize(300, 300)  # Reset all labels to original size
+        else:
+            # Expand only the selected label, minimize others
+            for i, video_label in enumerate(self.video_labels):
+                if i == index:
+                    video_label.setFixedSize(self.width(), self.height())  # Maximize the selected label
+                else:
+                    video_label.setFixedSize(100, 100)  # Minimize other labels
+            self.is_expanded = True
 
     def turn_on_camera(self, camera_id, label_index):
         """Turns on the specified camera and displays the feed in the corresponding video label."""
@@ -185,7 +211,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             # Update the current camera ID for this label
             self.current_camera_ids[label_index] = camera_id
 
-            video_label = self.video_labels[label_index]
+            video_label = self.video_labels[label_index].label
             video_label.setVisible(True)
 
             if camera_id:
@@ -202,7 +228,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                     if cap.isOpened():
                         self.caps[label_index] = cap
                         print(f"Camera {camera_id} opened successfully")
-                        
+
                         # Test reading a frame
                         ret, frame = cap.read()
                         if ret:
@@ -220,7 +246,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                     else:
                         print(f"Failed to open camera {camera_id}")
                         print(f"OpenCV error: {cv2.error}")
-            
+
             self.selected_camera_id = camera_id
             self.label_valid_flags[label_index] = True  # Mark this label as valid
 
@@ -229,8 +255,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             import traceback
             traceback.print_exc()
 
-
-
     def capture_frame(self, cap, label_index):
         """Captures a frame from the camera and emits a signal to update the GUI."""
         try:
@@ -238,12 +262,12 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             if not cap.isOpened():
                 print(f"Error: Camera for label_index {label_index} is not opened")
                 return
-            
+
             ret, frame = cap.read()
             if not ret:
                 print(f"Failed to capture frame from camera {self.current_camera_ids.get(label_index)} at label {label_index}")
                 return
-            
+
             # Debugging the frame shape and type
             print(f"Frame captured from camera {self.current_camera_ids.get(label_index)} at label {label_index}")
             print(f"Frame shape: {frame.shape}, dtype: {frame.dtype}")
@@ -258,7 +282,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             import traceback
             traceback.print_exc()
 
-
     @pyqtSlot(QImage, int)
     def on_frame_updated(self, image, label_index):
         """Updates the video label with the new frame in the main GUI thread."""
@@ -266,7 +289,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             print(f"on_frame_updated called for label_index {label_index}")
             if self.label_valid_flags.get(label_index, True):
                 if 0 <= label_index < len(self.video_labels):
-                    video_label = self.video_labels[label_index]
+                    video_label = self.video_labels[label_index].label
                     video_label.setPixmap(QPixmap.fromImage(image))
                     print(f"Frame updated for label {label_index}")
                 else:
@@ -275,7 +298,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                 print(f"Label at index {label_index} is no longer valid.")
         except Exception as e:
             print(f"Exception in on_frame_updated: {e}")
-
 
     def stop_all_threads(self):
         try:
@@ -297,11 +319,10 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         except Exception as e:
             print(f"Exception in stop_all_threads: {e}")
 
-
     def show_placeholder_image(self):
         """Show placeholder image on all labels."""
         for label_index in range(self.max_cameras_per_page):
-            self.video_labels[label_index].setPixmap(self.placeholder_image)
+            self.video_labels[label_index].label.setPixmap(self.placeholder_image)
             self.label_valid_flags[label_index] = False  # No active feed
             self.stop_camera_feed(label_index)
 
@@ -347,7 +368,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.rooms_list_combobox.addItem(display_text)
         self.available_cameras = db_func.get_available_cameras()
 
-
     def toggle_face_recognition(self):
         self.use_face_recognition = not self.use_face_recognition
         if self.use_face_recognition:
@@ -356,12 +376,13 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         else:
             print("Turning off face recognition.")
             self.update_video_display()
+
     def turn_on_face_recognition(self, camera_id):
         try:
             self.stop_all_threads()
             if camera_id is not None:
                 self.face_recognition_thread = FaceRecognitionService(camera_id, 'datasets/known_faces', 'datasets/Captures')
-                self.face_recognition_thread.ImageUpdated.connect(lambda image: self.update_image(image, self.video_labels[0]))
+                self.face_recognition_thread.ImageUpdated.connect(lambda image: self.update_image(image, self.video_labels[0].label))
                 self.face_recognition_thread.FaceRecognized.connect(self.handle_face_recognition)
                 self.face_recognition_thread.start()
                 print(f"Face recognition started for camera {camera_id}")
@@ -371,13 +392,12 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         except Exception as e:
             print(f"Exception in turn_on_face_recognition: {e}")
 
-
     def handle_face_recognition(self, face_locations, face_names):
         try:
             print(f"Faces recognized: {face_names}")
         except Exception as e:
             print(f"Exception in handle_face_recognition: {e}")
-    
+
     def change_map(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Map Image", "", "Image Files (*.png *.jpg *.bmp)")
         if file_path:
@@ -394,7 +414,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         new_camera_count = db_func.add_new_cameras()
         self.populate_mapping_list_and_camera_view()
         self.show_message(f"Loading cameras finished. {new_camera_count} new cameras added.")
-
 
     def show_combobox_context_menu(self, index):
         if index < 0:
@@ -413,7 +432,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         delete_assignment_action.triggered.connect(lambda: self.delete_assignment(room_id, camera_list))
         modify_assignment_action.triggered.connect(lambda: self.modify_assignment(room_id))
         contextMenu.exec_(self.rooms_list_combobox.mapToGlobal(self.rooms_list_combobox.rect().bottomLeft()))
-
 
     def add_room(self):
         room_name, ok = QInputDialog.getText(self, "Add Room", "Enter room name:")
@@ -455,10 +473,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def open_mapping_tab(self):
         self.tabWidget.setCurrentIndex(self.tabWidget.indexOf(self.mapping_tab))
-
-    def toggle_expand_video(self):
-        # Implement the logic to expand the video to full screen
-        pass
 
     def show_context_menu(self):
         sender = self.sender()
@@ -571,6 +585,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         if label_index in self.current_camera_ids:
             del self.current_camera_ids[label_index]
 
+
 if __name__ == "__main__":
     from GUI.LoginGUI import LoginWindow
 
@@ -587,6 +602,3 @@ if __name__ == "__main__":
         ui.show()
 
     sys.exit(app.exec_())
-
-
-
