@@ -1,19 +1,31 @@
-import cv2
+def solution(A, X, Y):
+    if not A or len(A) < 1:
+        return 0
 
-cap = cv2.VideoCapture(0)  # Change '0' to the correct camera index
+    A.sort()
+    r = float('inf')
+    left = 0
+    right = 0
+    i = 0
+    j = 0
 
-if not cap.isOpened():
-    print("Camera failed to open.")
-else:
-    print("Camera opened successfully.")
     while True:
-        ret, frame = cap.read()
-        if ret:
-            cv2.imshow('Camera Feed', frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
-        else:
-            print("Failed to capture frame.")
+        while j < len(A) - i and (left + A[j]) <= right:
+            left += A[j]
+            j += 1
+        
+        r = min(r, X * max(len(A) - j - i, 0) + Y * i)
+        
+        i += 1
+        if i > len(A):
+            break
 
-cap.release()
-cv2.destroyAllWindows()
+        right += A[len(A) - i]
+
+    return r
+
+# Example usage:
+print(solution([5, 3, 8, 3, 2], 2, 5))   # Output: 7
+print(solution([4, 2, 7], 4, 100))       # Output: 12
+print(solution([2, 2, 1, 2, 2], 2, 3))   # Output: 8
+print(solution([4, 1, 5, 3], 5, 2))      # Output: 4
