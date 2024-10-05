@@ -4,7 +4,7 @@ import logging
 import sys
 from PyQt5.QtCore import QTimer, Qt, pyqtSignal, pyqtSlot, QObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QWidget, QGridLayout, \
-    QDialog, QSizePolicy, QFileDialog, QMenu, QAction, QInputDialog, QPushButton, QVBoxLayout, QHBoxLayout
+    QDialog, QSizePolicy, QFileDialog, QMenu, QAction, QInputDialog, QPushButton
 from PyQt5.QtGui import QPixmap, QImage
 from src.CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
@@ -13,35 +13,46 @@ from src.face_recognition_service import FaceRecognitionService
 from src import db_func
 
 
+from PyQt5.QtGui import QIcon
+
 class VideoLabel(QWidget):
-    """Custom video label with an icon button to allow specific actions like expanding."""
-    def __init__(self, index, parent=None):
+    """Custom video label with an icon button overlaid in the lower-left corner."""
+    icon_clicked_signal = pyqtSignal(int)
+
+    def __init__(self, index, main_window, parent=None):
         super().__init__(parent)
         self.index = index
+        self.main_window = main_window  # Reference to the main window (MethodMapping)
         self.label = QLabel(self)
         self.label.setScaledContents(True)
         self.label.setMinimumSize(300, 300)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.setMinimumSize(300, 300)
 
-        # Create a button inside the label
-        self.icon_button = QPushButton(self)
-        self.icon_button.setIcon(self.style().standardIcon(QPushButton().style().SP_ArrowDown))  # Adjust icon here
+        # Create a button over the label
+        self.icon_button = QPushButton(self.label)
+        
+        # Load custom icon image
+        self.icon_button.setIcon(QIcon("image_2024_07_08T14_12_00_872Z.png"))  # Set custom image icon
         self.icon_button.setFixedSize(24, 24)
-        self.icon_button.setStyleSheet("background-color: rgba(0, 0, 0, 0.5);")  # Semi-transparent background
-        self.icon_button.clicked.connect(self.icon_clicked)  # Connect to action
+        self.icon_button.setStyleSheet("background-color: rgba(0, 0, 0, 0.5); border: none;")
+        self.icon_button.clicked.connect(self.icon_clicked)
 
-        # Layout for positioning
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.label)
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.icon_button)
-        button_layout.addStretch()
-        layout.addLayout(button_layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+        # Position the icon button
+        self.icon_button.move(5, self.label.height() - 29)
+        self.label.resizeEvent = self.update_icon_position
+
+    def update_icon_position(self, event):
+        self.icon_button.move(5, self.label.height() - 29)
 
     def icon_clicked(self):
-        # Emit a signal or call a method on click
         print(f"Icon clicked on label {self.index}")
-        self.parent().enter_partial_expand(self.index)
+        self.main_window.enter_partial_expand(self.index)  # Call enter_partial_expand on the main window
+
+
+    def icon_clicked(self):
+        print(f"Icon clicked on label {self.index}")
+        self.main_window.enter_partial_expand(self.index)  # Call enter_partial_expand on the main window
 
 
 class MethodMapping(QMainWindow, Ui_MainWindow):
@@ -58,6 +69,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.ip_camera_threads = {}  # Dictionary to handle multiple IP camera threads
             self.face_recognition_thread = None
             self.is_expanded = False
+            self.is_full_screen = False
+            self.is_partial_expanded = False
             self.ip_cameras = []
             self.placeholder_image = QPixmap("Black Image.png")
             self.view_camera_ids = []  # Store camera IDs for all video labels
@@ -100,7 +113,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
         # Initialize video labels and add to layout
         for i in range(self.max_cameras_per_page):
-            video_label = VideoLabel(i, self)
+            video_label = VideoLabel(i, main_window=self)  # Pass the reference to MethodMapping
             video_label.label.setPixmap(self.placeholder_image)
             self.video_layout.addWidget(video_label, i // 2, i % 2)
             self.video_labels.append(video_label)
@@ -171,30 +184,44 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             print(f"Exception in update_video_display: {e}")
 
     def toggle_expand_all(self):
-        """Toggles the main window to a larger size containing all video feeds."""
-        if self.is_expanded:
-            self.showNormal()  # Exit full screen
+        if self.is_full_screen:
+            self.showNormal()
             self.expand_all_button.setText("Expand All")
+            self.is_full_screen = False
         else:
-            self.showMaximized()  # Full screen with all video feeds visible
+            self.showMaximized()
             self.expand_all_button.setText("Shrink All")
-        self.is_expanded = not self.is_expanded
+            self.is_full_screen = True
+        # Adjust the layouts
+        self.adjust_layouts()
 
     def enter_partial_expand(self, index):
-        """Expand only the selected video label."""
-        if self.is_expanded:
-            self.showNormal()  # Return to normal mode
-            self.is_expanded = False
+        if self.is_partial_expanded:
+            # Restore all labels
             for video_label in self.video_labels:
-                video_label.setFixedSize(300, 300)  # Reset all labels to original size
+                video_label.setVisible(True)
+            self.is_partial_expanded = False
         else:
-            # Expand only the selected label, minimize others
+            # Hide other labels
             for i, video_label in enumerate(self.video_labels):
-                if i == index:
-                    video_label.setFixedSize(self.width(), self.height())  # Maximize the selected label
-                else:
-                    video_label.setFixedSize(100, 100)  # Minimize other labels
-            self.is_expanded = True
+                if i != index:
+                    video_label.setVisible(False)
+            self.is_partial_expanded = True
+        # Adjust the layouts
+        self.adjust_layouts()
+
+    def adjust_layouts(self):
+        if self.is_partial_expanded:
+            # Set the selected video label to occupy full space
+            for i, video_label in enumerate(self.video_labels):
+                if video_label.isVisible():
+                    self.video_layout.addWidget(video_label, 0, 0, 1, 1)
+        else:
+            # Restore grid layout
+            for i, video_label in enumerate(self.video_labels):
+                row = i // 2
+                col = i % 2
+                self.video_layout.addWidget(video_label, row, col)
 
     def turn_on_camera(self, camera_id, label_index):
         """Turns on the specified camera and displays the feed in the corresponding video label."""
@@ -329,9 +356,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
     def populate_mapping_list_and_camera_view(self):
         self.mapping_list.clear()
         rooms_with_cameras = db_func.get_all_rooms_with_cameras()
-
-        # Add new cameras to the database
-        db_func.add_new_cameras()
 
         # Refresh the available cameras after adding new ones
         available_cameras = db_func.get_available_cameras()  # Get unassigned cameras
