@@ -6,6 +6,8 @@ from PyQt5.QtCore import QTimer, Qt, pyqtSignal, pyqtSlot, QObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QWidget, QGridLayout, \
     QDialog, QSizePolicy, QFileDialog, QMenu, QAction, QInputDialog, QPushButton
 from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QSizePolicy
 from src.CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
 from src.ip_address_dialog import IPAddressDialog
@@ -16,43 +18,40 @@ from src import db_func
 from PyQt5.QtGui import QIcon
 
 class VideoLabel(QWidget):
-    """Custom video label with an icon button overlaid in the lower-left corner."""
+    """Custom video label with an icon button to allow specific actions like expanding."""
     icon_clicked_signal = pyqtSignal(int)
 
     def __init__(self, index, main_window, parent=None):
         super().__init__(parent)
         self.index = index
         self.main_window = main_window  # Reference to the main window (MethodMapping)
+        
+        # Set size policy to allow expansion
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Create the label to display the video
         self.label = QLabel(self)
         self.label.setScaledContents(True)
-        self.label.setMinimumSize(300, 300)
         self.label.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(300, 300)
+        self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        # Create a button over the label
-        self.icon_button = QPushButton(self.label)
-        
-        # Load custom icon image
+        # Create the icon button
+        self.icon_button = QPushButton(self)
         self.icon_button.setIcon(QIcon("image_2024_07_08T14_12_00_872Z.png"))  # Set custom image icon
         self.icon_button.setFixedSize(24, 24)
         self.icon_button.setStyleSheet("background-color: rgba(0, 0, 0, 0.5); border: none;")
         self.icon_button.clicked.connect(self.icon_clicked)
 
-        # Position the icon button
-        self.icon_button.move(5, self.label.height() - 29)
-        self.label.resizeEvent = self.update_icon_position
+        # Layout for positioning
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.label)
 
-    def update_icon_position(self, event):
-        self.icon_button.move(5, self.label.height() - 29)
-
-    def icon_clicked(self):
-        print(f"Icon clicked on label {self.index}")
-        self.main_window.enter_partial_expand(self.index)  # Call enter_partial_expand on the main window
-
-
-    def icon_clicked(self):
-        print(f"Icon clicked on label {self.index}")
-        self.main_window.enter_partial_expand(self.index)  # Call enter_partial_expand on the main window
+        # Position the button in the bottom-left corner over the label
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.icon_button)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+        layout.setContentsMargins(0, 0, 0, 0)
 
 
 class MethodMapping(QMainWindow, Ui_MainWindow):
@@ -317,6 +316,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             if self.label_valid_flags.get(label_index, True):
                 if 0 <= label_index < len(self.video_labels):
                     video_label = self.video_labels[label_index].label
+                    # Set the pixmap directly; rely on setScaledContents(True) for scaling
                     video_label.setPixmap(QPixmap.fromImage(image))
                     print(f"Frame updated for label {label_index}")
                 else:
@@ -325,6 +325,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                 print(f"Label at index {label_index} is no longer valid.")
         except Exception as e:
             print(f"Exception in on_frame_updated: {e}")
+
 
     def stop_all_threads(self):
         try:
