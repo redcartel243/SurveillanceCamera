@@ -2,12 +2,10 @@ import cv2
 import numpy as np
 import logging
 import sys
-from PyQt5.QtCore import QTimer, Qt, pyqtSignal, pyqtSlot, QObject
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QWidget, QGridLayout, \
-    QDialog, QSizePolicy, QFileDialog, QMenu, QAction, QInputDialog, QPushButton
-from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QSizePolicy
+    QDialog, QSizePolicy, QFileDialog, QMenu, QAction, QInputDialog, QPushButton, QVBoxLayout, QHBoxLayout
+from PyQt5.QtGui import QPixmap, QImage, QIcon
 from src.CaptureIpCameraFramesWorker import CaptureIpCameraFramesWorker
 from GUI.SurveillanceCameraGUI import Ui_MainWindow
 from src.ip_address_dialog import IPAddressDialog
@@ -15,43 +13,71 @@ from src.face_recognition_service import FaceRecognitionService
 from src import db_func
 
 
-from PyQt5.QtGui import QIcon
+class FullScreenWindow(QMainWindow):
+    def __init__(self, parent=None, label_indices=None, show_shrink_button=False):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Window)
+        self.setWindowState(Qt.WindowFullScreen)  # Make the window full screen
+        self.central_widget = QWidget(self)
+        self.setCentralWidget(self.central_widget)
+        self.layout = QGridLayout(self.central_widget)
+        self.labels = {}  # Dictionary to hold new QLabel widgets
+
+        if label_indices is not None:
+            for i, idx in enumerate(label_indices):
+                label = QLabel(self)
+                label.setScaledContents(True)
+                row = i // 2
+                col = i % 2
+                self.layout.addWidget(label, row, col)
+                self.labels[idx] = label
+
+        # Create a shrink button if needed
+        if show_shrink_button:
+            self.shrink_button = QPushButton("Shrink", self)
+            self.shrink_button.setStyleSheet("background-color: white; padding: 5px;")
+            self.shrink_button.setFixedSize(100, 40)
+            self.shrink_button.clicked.connect(self.close_fullscreen)
+            self.layout.addWidget(self.shrink_button, 0, 0)
+
+        # Make the video labels expand to fill the window
+        for i in range(self.layout.rowCount()):
+            self.layout.setRowStretch(i, 1)
+        for i in range(self.layout.columnCount()):
+            self.layout.setColumnStretch(i, 1)
+
+    def close_fullscreen(self):
+        """Close the full-screen window."""
+        self.close()
+
+    def closeEvent(self, event):
+        """Handle the closing of the full-screen window."""
+        parent = self.parent()
+        if parent:
+            parent.full_screen_active = False
+        event.accept()
+
+
 
 class VideoLabel(QWidget):
-    """Custom video label with an icon button to allow specific actions like expanding."""
-    icon_clicked_signal = pyqtSignal(int)
-
     def __init__(self, index, main_window, parent=None):
         super().__init__(parent)
         self.index = index
-        self.main_window = main_window  # Reference to the main window (MethodMapping)
-        
-        # Set size policy to allow expansion
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # Create the label to display the video
+        self.main_window = main_window
         self.label = QLabel(self)
         self.label.setScaledContents(True)
-        self.label.setAlignment(Qt.AlignCenter)
-        self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.label.setMinimumSize(300, 300)
 
-        # Create the icon button
+        # Create the icon button with a white background
         self.icon_button = QPushButton(self)
         self.icon_button.setIcon(QIcon("image_2024_07_08T14_12_00_872Z.png"))  # Set custom image icon
         self.icon_button.setFixedSize(24, 24)
-        self.icon_button.setStyleSheet("background-color: rgba(0, 0, 0, 0.5); border: none;")
+        self.icon_button.setStyleSheet("background-color: white; padding: 2px; border: none;")
         self.icon_button.clicked.connect(self.icon_clicked)
 
-        # Layout for positioning
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.label)
-
-        # Position the button in the bottom-left corner over the label
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.icon_button)
-        button_layout.addStretch()
-        layout.addLayout(button_layout)
-        layout.setContentsMargins(0, 0, 0, 0)
+    def icon_clicked(self):
+        print(f"Icon clicked on label {self.index}")
+        self.main_window.enter_partial_expand(self.index)
 
 
 class MethodMapping(QMainWindow, Ui_MainWindow):
@@ -67,9 +93,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.selected_camera_id = None
             self.ip_camera_threads = {}  # Dictionary to handle multiple IP camera threads
             self.face_recognition_thread = None
-            self.is_expanded = False
-            self.is_full_screen = False
-            self.is_partial_expanded = False
             self.ip_cameras = []
             self.placeholder_image = QPixmap("Black Image.png")
             self.view_camera_ids = []  # Store camera IDs for all video labels
@@ -80,6 +103,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.timers = {}  # Dictionary to hold QTimer objects for each camera
             self.label_valid_flags = {}  # Dictionary to track if a label is valid
             self.current_camera_ids = {}  # New dictionary to track current camera IDs per label index
+            self.full_screen_active = False
             self.setupUi()
             print("MethodMapping initialized")
 
@@ -112,17 +136,17 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
         # Initialize video labels and add to layout
         for i in range(self.max_cameras_per_page):
-            video_label = VideoLabel(i, main_window=self)  # Pass the reference to MethodMapping
+            video_label = VideoLabel(i, self)
             video_label.label.setPixmap(self.placeholder_image)
             self.video_layout.addWidget(video_label, i // 2, i % 2)
             self.video_labels.append(video_label)
             self.label_valid_flags[i] = False  # Initially no active feed
 
-        # Add expand all button
+        # Expand all button with a white background
         self.expand_all_button = QPushButton("Expand All", self)
-        self.expand_all_button.setFixedSize(100, 30)
+        self.expand_all_button.setStyleSheet("background-color: white; padding: 5px;")
         self.expand_all_button.clicked.connect(self.toggle_expand_all)
-        self.gridLayout.addWidget(self.expand_all_button, 1, 0, 1, 1)  # Adjust positioning as needed
+        self.gridLayout.addWidget(self.expand_all_button, 1, 0, 1, 1)
 
         self.show_placeholder_image()
 
@@ -183,50 +207,46 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             print(f"Exception in update_video_display: {e}")
 
     def toggle_expand_all(self):
-        if self.is_full_screen:
-            self.showNormal()
-            self.expand_all_button.setText("Expand All")
-            self.is_full_screen = False
-        else:
-            self.showMaximized()
-            self.expand_all_button.setText("Shrink All")
-            self.is_full_screen = True
-        # Adjust the layouts
-        self.adjust_layouts()
+        """Opens a full-screen window with all video feeds in a 2x2 grid, with a shrink button."""
+        label_indices = [i for i in range(len(self.video_labels))]
+        self.full_screen_window = FullScreenWindow(parent=self, label_indices=label_indices, show_shrink_button=True)
+        self.full_screen_window.show()
+        self.full_screen_active = True
 
     def enter_partial_expand(self, index):
-        if self.is_partial_expanded:
-            # Restore all labels
-            for video_label in self.video_labels:
-                video_label.setVisible(True)
-            self.is_partial_expanded = False
-        else:
-            # Hide other labels
-            for i, video_label in enumerate(self.video_labels):
-                if i != index:
-                    video_label.setVisible(False)
-            self.is_partial_expanded = True
-        # Adjust the layouts
-        self.adjust_layouts()
+        """Opens a full-screen window with a single video feed and a shrink button."""
+        self.full_screen_window = FullScreenWindow(parent=self, label_indices=[index], show_shrink_button=True)
+        self.full_screen_window.show()
+        self.full_screen_active = True
 
-    def adjust_layouts(self):
-        if self.is_partial_expanded:
-            # Set the selected video label to occupy full space
-            for i, video_label in enumerate(self.video_labels):
-                if video_label.isVisible():
-                    self.video_layout.addWidget(video_label, 0, 0, 1, 1)
-        else:
-            # Restore grid layout
-            for i, video_label in enumerate(self.video_labels):
-                row = i // 2
-                col = i % 2
-                self.video_layout.addWidget(video_label, row, col)
+
+    @pyqtSlot(QImage, int)
+    def on_frame_updated(self, image, label_index):
+        """Updates the video label with the new frame in the main GUI thread."""
+        try:
+            if self.label_valid_flags.get(label_index, True):
+                if 0 <= label_index < len(self.video_labels):
+                    # Update main window label
+                    main_label = self.video_labels[label_index].label
+                    main_label.setPixmap(QPixmap.fromImage(image))
+
+                    # Update full-screen label if active
+                    if self.full_screen_active and self.full_screen_window:
+                        fs_label = self.full_screen_window.labels.get(label_index)
+                        if fs_label:
+                            fs_label.setPixmap(QPixmap.fromImage(image))
+                else:
+                    print(f"Invalid label index in on_frame_updated: {label_index}")
+            else:
+                print(f"Label at index {label_index} is no longer valid.")
+        except Exception as e:
+            print(f"Exception in on_frame_updated: {e}")
+            logging.exception("Exception in on_frame_updated")
 
     def turn_on_camera(self, camera_id, label_index):
         """Turns on the specified camera and displays the feed in the corresponding video label."""
         try:
             print(f"Attempting to turn on camera {camera_id} for label {label_index}")
-            # Check if the camera ID for this label has changed
             if self.current_camera_ids.get(label_index) == camera_id:
                 print(f"Camera {camera_id} is already running on label {label_index}, no need to restart.")
                 return  # No need to restart the camera feed
@@ -255,36 +275,23 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                         self.caps[label_index] = cap
                         print(f"Camera {camera_id} opened successfully")
 
-                        # Test reading a frame
-                        ret, frame = cap.read()
-                        if ret:
-                            print(f"Successfully read a frame from camera {camera_id}")
-                        else:
-                            print(f"Failed to read a frame from camera {camera_id}")
-
                         timer = QTimer()
                         timer.timeout.connect(lambda cp=cap, idx=label_index: self.capture_frame(cp, idx))
                         timer.start(30)  # Refresh rate in milliseconds (30 ms = ~33 fps)
                         self.timers[label_index] = timer
-
-                        # Additional debug for timer start
-                        print(f"Timer started for camera {camera_id} at label_index {label_index}")
                     else:
                         print(f"Failed to open camera {camera_id}")
-                        print(f"OpenCV error: {cv2.error}")
 
             self.selected_camera_id = camera_id
             self.label_valid_flags[label_index] = True  # Mark this label as valid
 
         except Exception as e:
             print(f"Exception in turn_on_camera: {e}")
-            import traceback
-            traceback.print_exc()
+            logging.exception("Exception in turn_on_camera")
 
     def capture_frame(self, cap, label_index):
         """Captures a frame from the camera and emits a signal to update the GUI."""
         try:
-            print(f"Attempting to capture frame for label_index {label_index}")
             if not cap.isOpened():
                 print(f"Error: Camera for label_index {label_index} is not opened")
                 return
@@ -294,10 +301,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                 print(f"Failed to capture frame from camera {self.current_camera_ids.get(label_index)} at label {label_index}")
                 return
 
-            # Debugging the frame shape and type
-            print(f"Frame captured from camera {self.current_camera_ids.get(label_index)} at label {label_index}")
-            print(f"Frame shape: {frame.shape}, dtype: {frame.dtype}")
-
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = frame_rgb.shape
             bytes_per_line = ch * w
@@ -305,47 +308,42 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.frame_updated.emit(qimg, label_index)
         except Exception as e:
             print(f"Exception in capture_frame: {e}")
-            import traceback
-            traceback.print_exc()
-
-    @pyqtSlot(QImage, int)
-    def on_frame_updated(self, image, label_index):
-        """Updates the video label with the new frame in the main GUI thread."""
-        try:
-            print(f"on_frame_updated called for label_index {label_index}")
-            if self.label_valid_flags.get(label_index, True):
-                if 0 <= label_index < len(self.video_labels):
-                    video_label = self.video_labels[label_index].label
-                    # Set the pixmap directly; rely on setScaledContents(True) for scaling
-                    video_label.setPixmap(QPixmap.fromImage(image))
-                    print(f"Frame updated for label {label_index}")
-                else:
-                    print(f"Invalid label index in on_frame_updated: {label_index}")
-            else:
-                print(f"Label at index {label_index} is no longer valid.")
-        except Exception as e:
-            print(f"Exception in on_frame_updated: {e}")
-
+            logging.exception("Exception in capture_frame")
 
     def stop_all_threads(self):
         try:
-            # Stop face recognition thread
             if self.face_recognition_thread and self.face_recognition_thread.isRunning():
                 self.face_recognition_thread.stop()
                 self.face_recognition_thread.wait()
                 print("Face recognition thread stopped")
                 self.face_recognition_thread = None
 
-            # Stop all camera feeds
             for label_index in range(self.max_cameras_per_page):
                 self.stop_camera_feed(label_index)
 
-            # Reset label valid flags
             self.label_valid_flags = {}
-            # Clear current camera IDs
             self.current_camera_ids = {}
         except Exception as e:
             print(f"Exception in stop_all_threads: {e}")
+            logging.exception("Exception in stop_all_threads")
+
+    def stop_camera_feed(self, label_index):
+        """Stops the camera feed for the specified label index."""
+        if label_index in self.caps:
+            cap = self.caps.pop(label_index)
+            cap.release()
+
+        if label_index in self.timers:
+            timer = self.timers.pop(label_index)
+            timer.stop()
+
+        if label_index in self.ip_camera_threads:
+            thread = self.ip_camera_threads.pop(label_index)
+            thread.stop()
+            thread.wait()
+
+        if label_index in self.current_camera_ids:
+            del self.current_camera_ids[label_index]
 
     def show_placeholder_image(self):
         """Show placeholder image on all labels."""
@@ -357,31 +355,23 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
     def populate_mapping_list_and_camera_view(self):
         self.mapping_list.clear()
         rooms_with_cameras = db_func.get_all_rooms_with_cameras()
+        db_func.add_new_cameras()  # Add new cameras
 
-        # Refresh the available cameras after adding new ones
-        available_cameras = db_func.get_available_cameras()  # Get unassigned cameras
-
-        print(f"Rooms with cameras at startup: {rooms_with_cameras}")
-        # Create a list of all cameras, assigned and unassigned, sorted alphabetically
+        available_cameras = db_func.get_available_cameras()
         all_cameras = set()
         for cameras in rooms_with_cameras.values():
             all_cameras.update(cameras)
         all_cameras.update(available_cameras)
-        all_cameras.update(self.ip_cameras)  # Include IP cameras
+        all_cameras.update(self.ip_cameras)
 
-        # Sort all cameras alphabetically
         sorted_cameras = sorted(all_cameras, key=lambda x: str(x))
 
-        # Populate the mapping list (with room names for assigned cameras)
         for room_name, cameras in rooms_with_cameras.items():
             for camera in cameras:
                 list_item_text = f"{room_name}: Camera {camera}"
                 self.mapping_list.addItem(list_item_text)
 
-        # Update the video labels to display camera feeds for all cameras (up to 4 per page)
         self.view_camera_ids = sorted_cameras
-
-        # Start and display the camera feeds automatically on app startup
         self.update_video_display()
 
     def populate_rooms_combobox(self):
@@ -416,12 +406,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                 print("No camera selected for face recognition.")
         except Exception as e:
             print(f"Exception in turn_on_face_recognition: {e}")
+            logging.exception("Exception in turn_on_face_recognition")
 
     def handle_face_recognition(self, face_locations, face_names):
         try:
             print(f"Faces recognized: {face_names}")
         except Exception as e:
             print(f"Exception in handle_face_recognition: {e}")
+            logging.exception("Exception in handle_face_recognition")
 
     def change_map(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select Map Image", "", "Image Files (*.png *.jpg *.bmp)")
@@ -591,24 +583,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def show_message(self, message):
         QMessageBox.information(self, "Information", message)
-
-    def stop_camera_feed(self, label_index):
-        """Stops the camera feed for the specified label index."""
-        if label_index in self.caps:
-            cap = self.caps.pop(label_index)
-            cap.release()
-
-        if label_index in self.timers:
-            timer = self.timers.pop(label_index)
-            timer.stop()
-
-        if label_index in self.ip_camera_threads:
-            thread = self.ip_camera_threads.pop(label_index)
-            thread.stop()
-            thread.wait()
-
-        if label_index in self.current_camera_ids:
-            del self.current_camera_ids[label_index]
 
 
 if __name__ == "__main__":
