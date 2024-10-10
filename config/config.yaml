@@ -1,9 +1,9 @@
 email:
-  sender: "bukedidavid@gmail.com"
-  password: "+243814863297"
-  receiver: "applitwebsite1@outlook.com"
+  sender: "youremail@gmail.com"
+  password: "testpass"
+  receiver: "receiver@gmail.com"
 alarm:
-  sound: 2
+  sound: 1
   repetitions: 3
   text: "Intruder detected"
 voice:
