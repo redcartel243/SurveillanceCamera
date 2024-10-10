@@ -37,8 +37,8 @@
       </property>
       <property name="maximumSize">
        <size>
-        <width>1054</width>
-        <height>643</height>
+        <width>16777215</width>
+        <height>16777215</height>
        </size>
       </property>
       <property name="palette">
@@ -430,7 +430,7 @@
        </palette>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="camera_tab">
        <property name="enabled">

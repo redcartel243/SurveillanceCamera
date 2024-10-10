@@ -14,31 +14,26 @@ from src import db_func
 
 
 class FullScreenWindow(QMainWindow):
-    def __init__(self, parent=None, label_indices=None, show_shrink_button=False):
+    def __init__(self, parent=None, label_indices=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.Window)
-        self.setWindowState(Qt.WindowFullScreen)  # Make the window full screen
+        self.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
+        self.showMaximized()
         self.central_widget = QWidget(self)
         self.setCentralWidget(self.central_widget)
         self.layout = QGridLayout(self.central_widget)
         self.labels = {}  # Dictionary to hold new QLabel widgets
+        
 
         if label_indices is not None:
             for i, idx in enumerate(label_indices):
                 label = QLabel(self)
                 label.setScaledContents(True)
+                label.setAlignment(Qt.AlignCenter)
+                label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
                 row = i // 2
                 col = i % 2
                 self.layout.addWidget(label, row, col)
                 self.labels[idx] = label
-
-        # Create a shrink button if needed
-        if show_shrink_button:
-            self.shrink_button = QPushButton("Shrink", self)
-            self.shrink_button.setStyleSheet("background-color: white; padding: 5px;")
-            self.shrink_button.setFixedSize(100, 40)
-            self.shrink_button.clicked.connect(self.close_fullscreen)
-            self.layout.addWidget(self.shrink_button, 0, 0)
 
         # Make the video labels expand to fill the window
         for i in range(self.layout.rowCount()):
@@ -46,16 +41,13 @@ class FullScreenWindow(QMainWindow):
         for i in range(self.layout.columnCount()):
             self.layout.setColumnStretch(i, 1)
 
-    def close_fullscreen(self):
-        """Close the full-screen window."""
-        self.close()
-
     def closeEvent(self, event):
         """Handle the closing of the full-screen window."""
         parent = self.parent()
         if parent:
             parent.full_screen_active = False
         event.accept()
+
 
 
 
@@ -98,6 +90,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
     def __init__(self, title="", user_id=None):
         try:
             super().__init__()
+            self.full_screen_active = False  # Flag to track if full screen is active
+            self.full_screen_window = None  # Reference to the full-screen window
             self.title = title
             self.user_id = user_id
             self.available_cameras = []  # List of available cameras
@@ -106,6 +100,9 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.ip_camera_threads = {}  # Dictionary to handle multiple IP camera threads
             self.face_recognition_thread = None
             self.ip_cameras = []
+            self.is_expanded = False
+            self.is_full_screen = False
+            self.is_partial_expanded = False
             self.placeholder_image = QPixmap("Black Image.png")
             self.view_camera_ids = []  # Store camera IDs for all video labels
             self.current_page = 0  # Track the current page of cameras
@@ -156,7 +153,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.video_labels.append(video_label)
             self.label_valid_flags[i] = False  # Initially no active feed
 
-        
+        for i in range(self.gridLayout.rowCount()):
+            self.gridLayout.setRowStretch(i, 1)  # Make each row stretchable
+        for i in range(self.gridLayout.columnCount()):
+            self.gridLayout.setColumnStretch(i, 1)  # Make each column stretchable
+
+        for video_label in self.video_labels:
+            video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # Ensure the video expands
+
 
         self.show_placeholder_image()
 
@@ -164,10 +168,10 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         """Resize the window based on the selected tab."""
         if index == self.tabWidget.indexOf(self.alarm_tab):
             self.setFixedSize(600, 600)  # Alarm tab size
-        elif index == self.tabWidget.indexOf(self.camera_tab):
-            self.setFixedSize(1054, 643)  # Camera tab size
         elif index == self.tabWidget.indexOf(self.mapping_tab):
             self.setFixedSize(646, 618)  # Mapping tab size
+        """elif index == self.tabWidget.indexOf(self.camera_tab):
+            self.setFixedSize(2000, 1000)  # Camera tab size"""
 
     def next_page(self):
         """Move to the next page of camera feeds."""
@@ -226,17 +230,51 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             print(f"Exception in update_video_display: {e}")
 
     def toggle_expand_all(self):
-        """Opens a full-screen window with all video feeds in a 2x2 grid, with a shrink button."""
-        label_indices = [i for i in range(len(self.video_labels))]
-        self.full_screen_window = FullScreenWindow(parent=self, label_indices=label_indices, show_shrink_button=True)
-        self.full_screen_window.show()
-        self.full_screen_active = True
+        if self.full_screen_active:
+            self.full_screen_window.close()  # Close the full-screen window
+            self.expand_all_button.setText("Expand All")
+            self.full_screen_active = False
+        else:
+            # Open the full-screen window
+            self.full_screen_window = FullScreenWindow(self, label_indices=[0, 1, 2, 3])
+            self.full_screen_window.show()
+            self.expand_all_button.setText("Shrink All")
+            self.full_screen_active = True
+
+
 
     def enter_partial_expand(self, index):
-        """Opens a full-screen window with a single video feed and a shrink button."""
-        self.full_screen_window = FullScreenWindow(parent=self, label_indices=[index], show_shrink_button=True)
-        self.full_screen_window.show()
-        self.full_screen_active = True
+        if self.is_partial_expanded:
+            # Restore all labels
+            for video_label in self.video_labels:
+                video_label.setVisible(True)
+            self.is_partial_expanded = False
+        else:
+            # Hide other labels
+            for i, video_label in enumerate(self.video_labels):
+                if i != index:
+                    video_label.setVisible(False)
+            self.is_partial_expanded = True
+        # Adjust the layouts
+        self.adjust_layouts()
+
+    def adjust_layouts(self):
+        if self.is_partial_expanded:
+            # Set the selected video label to occupy full space
+            for i, video_label in enumerate(self.video_labels):
+                if video_label.isVisible():
+                    """self.next_button.hide()
+                    self.vision_button.hide()
+                    self.all_camera_off_button.hide()
+                    self.expand_all_button.hide()
+                    self.next_button.hide()"""
+                    self.video_layout.addWidget(video_label, 0, 0, 1, 1)
+        else:
+            # Restore grid layout
+            for i, video_label in enumerate(self.video_labels):
+                row = i // 2
+                col = i % 2
+                self.video_layout.addWidget(video_label, row, col)
 
 
     @pyqtSlot(QImage, int)
@@ -249,11 +287,11 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                     main_label = self.video_labels[label_index].label
                     main_label.setPixmap(QPixmap.fromImage(image))
 
-                    # Update full-mscreen label if active
+                    # Update full-screen label if active
                     if self.full_screen_active and self.full_screen_window:
                         fs_label = self.full_screen_window.labels.get(label_index)
                         if fs_label:
-                            fs_label.setPixmap(QPixap.fromImage(image))
+                            fs_label.setPixmap(QPixmap.fromImage(image))
                 else:
                     print(f"Invalid label index in on_frame_updated: {label_index}")
             else:
@@ -261,6 +299,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         except Exception as e:
             print(f"Exception in on_frame_updated: {e}")
             logging.exception("Exception in on_frame_updated")
+
 
     def turn_on_camera(self, camera_id, label_index):
         """Turns on the specified camera and displays the feed in the corresponding video label."""
