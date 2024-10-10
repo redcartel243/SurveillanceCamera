@@ -1,7 +1,7 @@
 # requirements.txt
 
 # Python version
-python==3.8.*  # Specify the desired Python version
+python==3.7.*  # Specify the desired Python version
 
 # Core libraries
 opencv-python==4.5.3.20210927
