@@ -66,7 +66,8 @@ class VideoLabel(QWidget):
         self.main_window = main_window
         self.label = QLabel(self)
         self.label.setScaledContents(True)
-        self.label.setMinimumSize(300, 300)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # Create the icon button with a white background
         self.icon_button = QPushButton(self)
@@ -74,6 +75,17 @@ class VideoLabel(QWidget):
         self.icon_button.setFixedSize(24, 24)
         self.icon_button.setStyleSheet("background-color: white; padding: 2px; border: none;")
         self.icon_button.clicked.connect(self.icon_clicked)
+
+        # Layout for positioning
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.label)
+
+        # Position the button in the bottom-left corner over the label
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.icon_button)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+        layout.setContentsMargins(0, 0, 0, 0)
 
     def icon_clicked(self):
         print(f"Icon clicked on label {self.index}")
@@ -125,6 +137,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         self.add_room_button.clicked.connect(self.add_room)
         self.change_map_button.clicked.connect(self.change_map)
         self.all_camera_off_button.clicked.connect(self.stop_all_threads)
+        self.expand_all_button.clicked.connect(self.toggle_expand_all)
+        self.tabWidget.currentChanged.connect(self.resize_based_on_tab)
 
         self.next_button.clicked.connect(self.next_page)
         self.previous_button.clicked.connect(self.previous_page)
@@ -142,13 +156,18 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.video_labels.append(video_label)
             self.label_valid_flags[i] = False  # Initially no active feed
 
-        # Expand all button with a white background
-        self.expand_all_button = QPushButton("Expand All", self)
-        self.expand_all_button.setStyleSheet("background-color: white; padding: 5px;")
-        self.expand_all_button.clicked.connect(self.toggle_expand_all)
-        self.gridLayout.addWidget(self.expand_all_button, 1, 0, 1, 1)
+        
 
         self.show_placeholder_image()
+
+    def resize_based_on_tab(self, index):
+        """Resize the window based on the selected tab."""
+        if index == self.tabWidget.indexOf(self.alarm_tab):
+            self.setFixedSize(600, 600)  # Alarm tab size
+        elif index == self.tabWidget.indexOf(self.camera_tab):
+            self.setFixedSize(1054, 643)  # Camera tab size
+        elif index == self.tabWidget.indexOf(self.mapping_tab):
+            self.setFixedSize(646, 618)  # Mapping tab size
 
     def next_page(self):
         """Move to the next page of camera feeds."""
@@ -230,11 +249,11 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                     main_label = self.video_labels[label_index].label
                     main_label.setPixmap(QPixmap.fromImage(image))
 
-                    # Update full-screen label if active
+                    # Update full-mscreen label if active
                     if self.full_screen_active and self.full_screen_window:
                         fs_label = self.full_screen_window.labels.get(label_index)
                         if fs_label:
-                            fs_label.setPixmap(QPixmap.fromImage(image))
+                            fs_label.setPixmap(QPixap.fromImage(image))
                 else:
                     print(f"Invalid label index in on_frame_updated: {label_index}")
             else:
@@ -300,7 +319,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             if not ret:
                 print(f"Failed to capture frame from camera {self.current_camera_ids.get(label_index)} at label {label_index}")
                 return
-
+            
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = frame_rgb.shape
             bytes_per_line = ch * w
