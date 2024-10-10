@@ -63,10 +63,11 @@ class VideoLabel(QWidget):
 
         # Create the icon button with a white background
         self.icon_button = QPushButton(self)
-        self.icon_button.setIcon(QIcon("GUI/resources/image_2024_07_08T14_12_00_872Z.png"))  # Set custom image icon
+        self.icon_button.setIcon(QIcon("image_2024_07_08T14_12_00_872Z.png"))  # Set custom image icon
         self.icon_button.setFixedSize(24, 24)
         self.icon_button.setStyleSheet("background-color: white; padding: 2px; border: none;")
         self.icon_button.clicked.connect(self.icon_clicked)
+
 
         # Layout for positioning
         layout = QVBoxLayout(self)
@@ -79,9 +80,13 @@ class VideoLabel(QWidget):
         layout.addLayout(button_layout)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        self.is_expanded = False  # Track expansion state
+
+
     def icon_clicked(self):
         print(f"Icon clicked on label {self.index}")
         self.main_window.enter_partial_expand(self.index)
+
 
 
 class MethodMapping(QMainWindow, Ui_MainWindow):
@@ -120,6 +125,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
             # Populate combo boxes and camera views after UI is set up
             self.populate_rooms_combobox()
+            self.rooms_list_combobox.currentIndexChanged.connect(self.show_combobox_context_menu)
             self.populate_mapping_list_and_camera_view()
         except Exception as e:
             print(f"Exception during initialization: {e}")
@@ -153,16 +159,13 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.video_labels.append(video_label)
             self.label_valid_flags[i] = False  # Initially no active feed
 
-        for i in range(self.gridLayout.rowCount()):
-            self.gridLayout.setRowStretch(i, 1)  # Make each row stretchable
-        for i in range(self.gridLayout.columnCount()):
-            self.gridLayout.setColumnStretch(i, 1)  # Make each column stretchable
-
-        for video_label in self.video_labels:
-            video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # Ensure the video expands
-
+            # Fetch camera info and update label with room and camera ID
+            camera_id = self.view_camera_ids[i] if i < len(self.view_camera_ids) else None
+            room_id = db_func.get_room_id_by_name(camera_id) if camera_id else None
+            room_name = db_func.get_room_name_by_id(room_id) if room_id else "Unknown Room"
 
         self.show_placeholder_image()
+
 
     def resize_based_on_tab(self, index):
         """Resize the window based on the selected tab."""
@@ -248,15 +251,18 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             # Restore all labels
             for video_label in self.video_labels:
                 video_label.setVisible(True)
+                video_label.adjust_for_expansion(False)  # Not expanded
             self.is_partial_expanded = False
         else:
             # Hide other labels
             for i, video_label in enumerate(self.video_labels):
                 if i != index:
                     video_label.setVisible(False)
+                video_label.adjust_for_expansion(i == index)  # Only expanded if this is the label
             self.is_partial_expanded = True
         # Adjust the layouts
         self.adjust_layouts()
+
 
     def adjust_layouts(self):
         if self.is_partial_expanded:
@@ -302,21 +308,21 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
 
     def turn_on_camera(self, camera_id, label_index):
-        """Turns on the specified camera and displays the feed in the corresponding video label."""
         try:
             print(f"Attempting to turn on camera {camera_id} for label {label_index}")
             if self.current_camera_ids.get(label_index) == camera_id:
                 print(f"Camera {camera_id} is already running on label {label_index}, no need to restart.")
                 return  # No need to restart the camera feed
 
-            # Ensure previous feed on this label is stopped before turning on a new feed
-            self.stop_camera_feed(label_index)
-
-            # Update the current camera ID for this label
+            self.stop_camera_feed(label_index)  # Stop any previous feed on this label
             self.current_camera_ids[label_index] = camera_id
-
             video_label = self.video_labels[label_index].label
             video_label.setVisible(True)
+
+            # Fetch the room and camera ID information
+            room_id = db_func.get_room_id_by_name(camera_id)  # Assuming camera_id is linked to a room
+            room_name = db_func.get_room_name_by_id(room_id) if room_id else "Unknown Room"
+
 
             if camera_id:
                 if isinstance(camera_id, str) and len(camera_id) > 16:  # IP camera case
@@ -325,27 +331,24 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                     ip_thread.ImageUpdated.connect(lambda image, idx=label_index: self.frame_updated.emit(image, idx))
                     ip_thread.start()
                     self.ip_camera_threads[label_index] = ip_thread
+
                     print(f"Connected to IP camera at {camera_id}")
                 else:
-                    print(f"Attempting to open local camera {camera_id}")
                     cap = cv2.VideoCapture(int(camera_id))
                     if cap.isOpened():
                         self.caps[label_index] = cap
                         print(f"Camera {camera_id} opened successfully")
-
+                        
                         timer = QTimer()
                         timer.timeout.connect(lambda cp=cap, idx=label_index: self.capture_frame(cp, idx))
-                        timer.start(30)  # Refresh rate in milliseconds (30 ms = ~33 fps)
+                        timer.start(30)  # ~33 fps
                         self.timers[label_index] = timer
                     else:
                         print(f"Failed to open camera {camera_id}")
-
-            self.selected_camera_id = camera_id
-            self.label_valid_flags[label_index] = True  # Mark this label as valid
-
         except Exception as e:
             print(f"Exception in turn_on_camera: {e}")
-            logging.exception("Exception in turn_on_camera")
+
+
 
     def capture_frame(self, cap, label_index):
         """Captures a frame from the camera and emits a signal to update the GUI."""
@@ -359,6 +362,34 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                 print(f"Failed to capture frame from camera {self.current_camera_ids.get(label_index)} at label {label_index}")
                 return
             
+            # Get room name and camera ID (you should adjust these according to your logic)
+            room_name = db_func.get_room_name_by_id(self.current_camera_ids[label_index])
+            camera_id = self.current_camera_ids[label_index]
+            state = "ON"  # You can update this based on the actual state
+
+            # Define the text to overlay on the video
+            overlay_text = f"{room_name} | Camera ID: {camera_id} | {state}"
+
+            # Set font, font scale, and color
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            if self.is_partial_expanded:
+                font_scale = 1.5  # Larger font for expanded videos
+                thickness = 2
+            else:
+                font_scale = 0.6  # Smaller font for non-expanded videos
+                thickness = 1
+            
+            color = (255, 255, 255)  # White text
+            text_size = cv2.getTextSize(overlay_text, font, font_scale, thickness)[0]
+
+            # Position the text at the bottom-center of the frame
+            text_x = (frame.shape[1] - text_size[0]) // 2
+            text_y = frame.shape[0] - 10  # Offset from the bottom edge
+
+            # Put text on the frame
+            cv2.putText(frame, overlay_text, (text_x, text_y), font, font_scale, color, thickness, cv2.LINE_AA)
+
+            # Convert frame to RGB (OpenCV uses BGR by default)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = frame_rgb.shape
             bytes_per_line = ch * w
@@ -367,6 +398,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
         except Exception as e:
             print(f"Exception in capture_frame: {e}")
             logging.exception("Exception in capture_frame")
+
 
     def stop_all_threads(self):
         try:
@@ -383,7 +415,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.current_camera_ids = {}
         except Exception as e:
             print(f"Exception in stop_all_threads: {e}")
-            logging.exception("Exception in stop_all_threads")
+
 
     def stop_camera_feed(self, label_index):
         """Stops the camera feed for the specified label index."""
@@ -402,6 +434,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
         if label_index in self.current_camera_ids:
             del self.current_camera_ids[label_index]
+
 
     def show_placeholder_image(self):
         """Show placeholder image on all labels."""
@@ -460,11 +493,9 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                 self.face_recognition_thread.start()
                 print(f"Face recognition started for camera {camera_id}")
                 self.selected_camera_id = camera_id
-            else:
-                print("No camera selected for face recognition.")
         except Exception as e:
             print(f"Exception in turn_on_face_recognition: {e}")
-            logging.exception("Exception in turn_on_face_recognition")
+
 
     def handle_face_recognition(self, face_locations, face_names):
         try:
@@ -492,20 +523,26 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     def show_combobox_context_menu(self, index):
         if index < 0:
-            return
+            return  # No item selected
+
+        room_id = self.rooms_list_combobox.itemData(index)  # Retrieve room_id from combobox item data
         room_text = self.rooms_list_combobox.itemText(index)
         room_name, camera_list = room_text.split(': ')
+
         contextMenu = QMenu(self)
+
         delete_room_action = QAction("Delete Room", self)
         delete_assignment_action = QAction("Delete Assignment", self)
         modify_assignment_action = QAction("Modify Assignment", self)
+
         contextMenu.addAction(delete_room_action)
         contextMenu.addAction(delete_assignment_action)
         contextMenu.addAction(modify_assignment_action)
-        room_id = db_func.get_room_id_by_name(room_name)
+
         delete_room_action.triggered.connect(lambda: self.delete_room(room_id))
         delete_assignment_action.triggered.connect(lambda: self.delete_assignment(room_id, camera_list))
         modify_assignment_action.triggered.connect(lambda: self.modify_assignment(room_id))
+
         contextMenu.exec_(self.rooms_list_combobox.mapToGlobal(self.rooms_list_combobox.rect().bottomLeft()))
 
     def add_room(self):

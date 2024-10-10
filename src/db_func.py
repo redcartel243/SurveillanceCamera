@@ -5,7 +5,7 @@ from src.device import list_capture_devices
 
 # Database Initialization
 def init_db():
-    conn = sqlite3.connect('../SURVEILLANCE.db')
+    conn = sqlite3.connect('../CAM_SURV.db')
     c = conn.cursor()
 
     # Create Users table
@@ -122,11 +122,12 @@ def get_rooms(user_id):
 
 
 def delete_room(room_id):
+    str_room_id = str(room_id)
     conn = sqlite3.connect('../SURVEILLANCE.db')
     c = conn.cursor()
-    c.execute('DELETE FROM rooms WHERE id = ?', (room_id,))
-    c.execute('DELETE FROM cameras WHERE room_id = ?', (room_id,))
-    c.execute('UPDATE camera_status SET is_assigned = 0, room_id = NULL WHERE room_id = ?', (room_id,))
+    c.execute('DELETE FROM rooms WHERE id = ?', (str_room_id,))
+    c.execute('DELETE FROM cameras WHERE room_id = ?', (str_room_id,))
+    c.execute('UPDATE camera_status SET is_assigned = 0, room_id = NULL WHERE room_id = ?', (str_room_id,))
     conn.commit()
     conn.close()
 
