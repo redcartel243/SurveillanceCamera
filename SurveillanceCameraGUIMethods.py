@@ -63,7 +63,7 @@ class VideoLabel(QWidget):
 
         # Create the icon button with a white background
         self.icon_button = QPushButton(self)
-        self.icon_button.setIcon(QIcon("image_2024_07_08T14_12_00_872Z.png"))  # Set custom image icon
+        self.icon_button.setIcon(QIcon("GUI/resources/image_2024_07_08T14_12_00_872Z.png"))  # Set custom image icon
         self.icon_button.setFixedSize(24, 24)
         self.icon_button.setStyleSheet("background-color: white; padding: 2px; border: none;")
         self.icon_button.clicked.connect(self.icon_clicked)
@@ -103,7 +103,7 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.is_expanded = False
             self.is_full_screen = False
             self.is_partial_expanded = False
-            self.placeholder_image = QPixmap("Black Image.png")
+            self.placeholder_image = QPixmap("GUI/resources/Black Image.png")
             self.view_camera_ids = []  # Store camera IDs for all video labels
             self.current_page = 0  # Track the current page of cameras
             self.max_cameras_per_page = 4  # Max cameras to display per page
