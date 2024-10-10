@@ -72,7 +72,7 @@ Contributions are welcome! If you have suggestions for improvements or new featu
 
 ## Contact
 
-For any inquiries or support, please contact [bukedidavid@gmail.com](mailto:bukedidavid@gmail.com).
+For any inquiries or support, please contact [applitwebsite1@outlook.com.com](mailto:applitwebsite1@outlook.com).
 
 ---
 
