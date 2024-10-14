@@ -46,28 +46,46 @@ class LoginWindow(QtWidgets.QDialog):
         self.register_button.clicked.connect(self.register)
 
     def login(self):
-        username = self.username_input.text()
-        password = self.password_input.text()
+        username = self.username_input.text().strip()
+        password = self.password_input.text().strip()
 
-        if verify_password(username, password):
-            QtWidgets.QMessageBox.information(self, "Success", "Login successful!")
-            self.user_id = get_user(username)[0]  # Get the user ID from the database
-            self.accept()  # Close the dialog and indicate success
-        else:
-            QtWidgets.QMessageBox.warning(self, "Error", "Invalid username or password.")
+        if not username or not password:
+            QtWidgets.QMessageBox.warning(self, "Error", "Please enter both username and password.")
+            return
+
+        try:
+            if verify_password(username, password):
+                QtWidgets.QMessageBox.information(self, "Success", "Login successful!")
+                self.user_id = get_user(username)[0]  # Get the user ID from the database
+                self.accept()  # Close the dialog and indicate success
+            else:
+                QtWidgets.QMessageBox.warning(self, "Error", "Invalid username or password.")
+                self.password_input.clear()  # Clear password field after failed attempt
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Error", f"An error occurred: {e}")
 
     def register(self):
-        username = self.username_input.text()
-        password = self.password_input.text()
+        username = self.username_input.text().strip()
+        password = self.password_input.text().strip()
 
-        if username and password:
+        if not username or not password:
+            QtWidgets.QMessageBox.warning(self, "Error", "Please enter both username and password.")
+            return
+
+        try:
             if get_user(username):
                 QtWidgets.QMessageBox.warning(self, "Error", "Username already exists.")
             else:
-                store_user(username, password)
+                store_user(username=username, password=password)
                 QtWidgets.QMessageBox.information(self, "Success", "User registered successfully.")
-        else:
-            QtWidgets.QMessageBox.warning(self, "Error", "Please enter both username and password.")
+                self.clear_inputs()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Error", f"An error occurred: {e}")
+
+    def clear_inputs(self):
+        """Clear both the username and password input fields."""
+        self.username_input.clear()
+        self.password_input.clear()
 
     def get_user_id(self):
         return self.user_id
