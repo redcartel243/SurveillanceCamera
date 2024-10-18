@@ -13,6 +13,10 @@ from src.face_recognition_service import FaceRecognitionService
 from src import db_func
 
 
+
+is_partial_expanded = False
+full_screen_active = False
+
 class FullScreenWindow(QMainWindow):
     def __init__(self, parent=None, label_indices=None):
         super().__init__(parent)
@@ -41,9 +45,10 @@ class FullScreenWindow(QMainWindow):
             self.layout.setColumnStretch(i, 1)
 
     def closeEvent(self, event):
+        global full_screen_active
         parent = self.parent()
         if parent:
-            parent.full_screen_active = False
+            full_screen_active = False
         event.accept()
 
 
@@ -59,7 +64,7 @@ class VideoLabel(QWidget):
 
         # Create the icon button with a white background
         self.icon_button = QPushButton(self)
-        self.icon_button.setIcon(QIcon("image_2024_07_08T14_12_00_872Z.png"))
+        self.icon_button.setIcon(QIcon("GUI/resources/image_2024_07_08T14_12_00_872Z.png"))
         self.icon_button.setFixedSize(24, 24)
         self.icon_button.setStyleSheet("background-color: white; padding: 2px; border: none;")
         self.icon_button.clicked.connect(self.icon_clicked)
@@ -81,6 +86,11 @@ class VideoLabel(QWidget):
         print(f"Icon clicked on label {self.index}")
         self.main_window.enter_partial_expand(self.index)
 
+    def adjust_for_expansion(self, is_expanded):
+        """Adjust info size and position based on expansion state."""
+        self.is_expanded = is_expanded
+        
+
 
 class MethodMapping(QMainWindow, Ui_MainWindow):
     frame_updated = pyqtSignal(QImage, int)
@@ -88,7 +98,6 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
     def __init__(self, title="", user_id=None):
         try:
             super().__init__()
-            self.full_screen_active = False
             self.full_screen_window = None
             self.title = title
             self.user_id = user_id
@@ -98,19 +107,15 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.ip_camera_threads = {}
             self.face_recognition_thread = None
             self.ip_cameras = []
-            self.is_expanded = False
-            self.is_full_screen = False
-            self.is_partial_expanded = False
             self.placeholder_image = QPixmap("GUI/resources/Black Image.png")
             self.view_camera_ids = []
             self.current_page = 0
             self.max_cameras_per_page = 4
             self.video_labels = []
             self.caps = {}
+            self.current_camera_ids = {}
             self.timers = {}
             self.label_valid_flags = {}
-            self.current_camera_ids = {}
-            self.full_screen_active = False
             self.setupUi()
             print("MethodMapping initialized")
 
@@ -163,6 +168,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             self.setFixedSize(600, 600)
         elif index == self.tabWidget.indexOf(self.mapping_tab):
             self.setFixedSize(646, 618)
+        elif index == self.tabWidget.indexOf(self.camera_tab):
+            self.setFixedSize(987, 607)
 
     def next_page(self):
         if (self.current_page + 1) * self.max_cameras_per_page < len(self.view_camera_ids):
@@ -211,32 +218,34 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             print(f"Exception in update_video_display: {e}")
 
     def toggle_expand_all(self):
-        if self.full_screen_active:
+        global full_screen_active 
+        if full_screen_active:
             self.full_screen_window.close()
-            self.expand_all_button.setText("Expand All")
-            self.full_screen_active = False
+            full_screen_active = False
+        
         else:
             self.full_screen_window = FullScreenWindow(self, label_indices=[0, 1, 2, 3])
             self.full_screen_window.show()
-            self.expand_all_button.setText("Shrink All")
-            self.full_screen_active = True
+            full_screen_active = True
 
     def enter_partial_expand(self, index):
-        if self.is_partial_expanded:
+        global is_partial_expanded
+        if is_partial_expanded:
             for video_label in self.video_labels:
                 video_label.setVisible(True)
                 video_label.adjust_for_expansion(False)
-            self.is_partial_expanded = False
+            is_partial_expanded = False
         else:
             for i, video_label in enumerate(self.video_labels):
                 if i != index:
                     video_label.setVisible(False)
                 video_label.adjust_for_expansion(i == index)
-            self.is_partial_expanded = True
+            is_partial_expanded = True
         self.adjust_layouts()
 
     def adjust_layouts(self):
-        if self.is_partial_expanded:
+        global is_partial_expanded
+        if is_partial_expanded:
             for i, video_label in enumerate(self.video_labels):
                 if video_label.isVisible():
                     self.video_layout.addWidget(video_label, 0, 0, 1, 1)
@@ -248,13 +257,14 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot(QImage, int)
     def on_frame_updated(self, image, label_index):
+        global full_screen_active
         try:
             if self.label_valid_flags.get(label_index, True):
                 if 0 <= label_index < len(self.video_labels):
                     main_label = self.video_labels[label_index].label
                     main_label.setPixmap(QPixmap.fromImage(image))
 
-                    if self.full_screen_active and self.full_screen_window:
+                    if full_screen_active and self.full_screen_window:
                         fs_label = self.full_screen_window.labels.get(label_index)
                         if fs_label:
                             fs_label.setPixmap(QPixmap.fromImage(image))
@@ -305,6 +315,8 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
             print(f"Exception in turn_on_camera: {e}")
 
     def capture_frame(self, cap, label_index):
+        global is_partial_expanded
+        global full_screen_active
         try:
             if not cap.isOpened():
                 print(f"Error: Camera for label_index {label_index} is not opened")
@@ -316,19 +328,20 @@ class MethodMapping(QMainWindow, Ui_MainWindow):
                 return
 
             room_name = db_func.get_room_name_by_camera_id(self.current_camera_ids[label_index])
-            print(room_name)
             camera_id = self.current_camera_ids[label_index]
-            print(camera_id)
             state = "ON"
 
             overlay_text = f"{room_name} | Camera ID: {camera_id} | {state}"
 
             font = cv2.FONT_HERSHEY_SIMPLEX
-            if self.is_partial_expanded:
+            if full_screen_active:
                 font_scale = 1.5
                 thickness = 2
+            elif is_partial_expanded:
+                font_scale = 1.2
+                thickness = 2
             else:
-                font_scale = 0.6
+                font_scale = 1
                 thickness = 1
 
             color = (255, 255, 255)
