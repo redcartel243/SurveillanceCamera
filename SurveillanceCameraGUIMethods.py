@@ -91,7 +91,9 @@ class VideoLabel(QWidget):
         self.is_expanded = is_expanded
         
 
-
+#Add add_camera method for both ip and physical
+#Improve refresh camera method (Add loading bar, make it faster by removing unecessary calls)
+#Work on facerecognition and implement behavior analysis
 class MethodMapping(QMainWindow, Ui_MainWindow):
     frame_updated = pyqtSignal(QImage, int)
 
